@@ -1,18 +1,18 @@
 ﻿import streamlit as st
 import numpy as np
-import streamlit.components.v1 as components
+import matplotlib.pyplot as plt
 
 # --- PHYSICAL CONSTANTS (9 Materials) ---
 MATERIALS = {
-    "Steel": {"E": 2.0e11, "rho": 7800, "color": "#00f0ff"},
-    "Aluminum": {"E": 0.7e11, "rho": 2700, "color": "#39ff14"},
-    "Copper": {"E": 1.1e11, "rho": 8900, "color": "#ffaa00"},
-    "Iron": {"E": 2.1e11, "rho": 7870, "color": "#aaaaaa"},
-    "Lead": {"E": 0.16e11, "rho": 11340, "color": "#cc00ff"},
-    "Tungsten": {"E": 4.1e11, "rho": 19250, "color": "#ffcc00"},
-    "Titanium": {"E": 1.15e11, "rho": 4540, "color": "#ff00ff"},
-    "Gold": {"E": 0.78e11, "rho": 19300, "color": "#ffee00"},
-    "Silver": {"E": 0.83e11, "rho": 10500, "color": "#ffffff"}
+    "Steel": {"E": 2.0e11, "rho": 7800, "color": "cyan"},
+    "Aluminum": {"E": 0.7e11, "rho": 2700, "color": "lightgreen"},
+    "Copper": {"E": 1.1e11, "rho": 8900, "color": "orange"},
+    "Iron": {"E": 2.1e11, "rho": 7870, "color": "darkgray"},
+    "Lead": {"E": 0.16e11, "rho": 11340, "color": "purple"},
+    "Tungsten": {"E": 4.1e11, "rho": 19250, "color": "gold"},
+    "Titanium": {"E": 1.15e11, "rho": 4540, "color": "magenta"},
+    "Gold": {"E": 0.78e11, "rho": 19300, "color": "yellow"},
+    "Silver": {"E": 0.83e11, "rho": 10500, "color": "white"}
 }
 
 st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
@@ -20,7 +20,7 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-col1, col2 = st.columns([1, 2]) # Левая колонка под управление, правая шире под графики
+col1, col2 = st.columns([1, 2]) # Левая колонка чуть уже, правая шире под графики
 
 with col1:
     st.header("⚙️ Controls")
@@ -31,113 +31,70 @@ with col1:
     
     st.markdown("""
     **STUDENT GUIDE:**
-    1. Drag the slider inside the workspace.
-    2. The graphs will update **instantly in real-time** as you move the mouse.
+    1. Click on the slider handle inside the workspace.
+    2. Use **Left/Right Keyboard Arrows** for ultra-precise 1 Hz tuning.
     3. Find the peak frequency where Oscilloscope Amplitude reaches **1.0 V**.
     """)
 
-# Расчет физики резонанса для передачи в браузер
-E = mat_data["E"]
-rho = mat_data["rho"]
-v_sound = np.sqrt(E / rho)
-f0 = v_sound / (2 * 0.500)
-line_color = mat_data["color"]
-
-# Высокоскоростной интерактивный движок на Plotly.js (Защищенный от автовырезания текста)
-js_engine_code = f"""
-<!-- Скрипт Plotly загружаем в первую очередь -->
-<script src="https://plot.ly"></script>
-
-<div id="controls" style="font-family: Arial, sans-serif; color: white; background: #1e222b; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-    <label style="display:block; margin-bottom:8px; font-weight:bold; font-size:16px;">
-        Signal Generator Frequency: <span id="freq_val" style="color:#00f0ff; font-size:18px;">1500</span> Hz
-    </label>
-    <input type="range" id="realtime_slide" min="1000" max="6000" value="1500" step="1" 
-        style="width: 100%; accent-color: #00f0ff; cursor: pointer;">
-</div>
-
-<div id="scope_chart"></div>
-<div id="rod_chart" style="margin-top:15px;"></div>
-
-<script>
-    const f0 = {f0};
-    const Q = 50; 
-    const rodLength = 0.500;
-    const waveColor = "{line_color}";
+# Изолированный фрагмент (убирает тормоза при движении слайдера)
+@st.fragment
+def run_clean_matplotlib_experiment(selected_material, physics_data):
+    # Плавный слайдер с шагом 1 Гц
+    current_freq = st.slider(
+        "Signal Generator Frequency (Hz):", 
+        min_value=1000, max_value=6000, value=1500, step=1
+    )
     
-    // Генерируем 800 точек для идеальной аналоговой плавности
-    const t_arr = [];
-    for(let i=0; i<=800; i++) t_arr.push((0.002 / 800) * i);
-    const t_ms = t_arr.map(t => t * 1000);
+    # Физические расчеты амплитуды резонанса
+    E = physics_data["E"]
+    rho = physics_data["rho"]
+    rod_length = 0.500
     
-    const x_arr = [];
-    for(let i=0; i<=200; i++) x_arr.push((rodLength / 200) * i);
+    v_sound = np.sqrt(E / rho)
+    f0 = v_sound / (2 * rod_length)
+    
+    Q = 50 # Комфортная ширина пика для поиска
+    amp = 1.0 / np.sqrt(1.0 + Q**2 * (current_freq/f0 - f0/current_freq)**2)
+    
+    if amp < 0.02:
+        amp = 0.02
 
-    // Безопасная инициализация нулевых массивов (защита от вырезания скобок фильтрами)
-    const zero_scope_y = new Array(801).fill(0);
-    const zero_rod_y = new Array(201).fill(0);
-    const node_x_array = new Array(1).fill(rodLength / 2);
-    const node_y_array = new Array(1).fill(0);
+    # Создание графиков через классический Matplotlib (Dark стиль)
+    plt.style.use('dark_background')
+    fig, (ax_scope, ax_rod) = plt.subplots(2, 1, figsize=(7, 6.5))
+    fig.tight_layout(pad=4.0)
+    
+    # 1. Цифровой осциллограф (800 точек — ИДЕАЛЬНАЯ плавность без изломов!)
+    t = np.linspace(0, 0.002, 800) 
+    v_signal = amp * np.sin(2 * np.pi * current_freq * t)
+    
+    # Отрисовка сплошной непрозрачной линией (alpha=1.0)
+    ax_scope.plot(t*1000, v_signal, color='#39ff14', linewidth=2.5, alpha=1.0)
+    ax_scope.grid(True, color='#333333', linestyle='--')
+    ax_scope.set_title(f"DIGITAL OSCILLOSCOPE (Current Freq: {current_freq} Hz)", fontsize=11, fontweight='bold', color='#00f0ff')
+    ax_scope.set_xlabel("Time (ms)", fontsize=9)
+    ax_scope.set_ylabel("Amplitude (V)", fontsize=9)
+    ax_scope.set_ylim(-1.1, 1.1)
+    
+    # 2. Профиль стоячей волны (200 точек)
+    x = np.linspace(0, rod_length, 200)
+    wave_profile = amp * np.cos(np.pi * x / rod_length)
+    
+    ax_rod.axhline(0, color='white', lw=2, alpha=0.3)
+    ax_rod.plot(x, wave_profile, color=physics_data["color"], linewidth=3, alpha=1.0, label="Displacement Envelope")
+    ax_rod.plot(x, -wave_profile, color=physics_data["color"], linewidth=1, linestyle='--', alpha=0.7)
+    ax_rod.plot(rod_length/2, 0, 'ro', markersize=9, label="Clamped Center (Node)")
+    ax_rod.set_title(f"Standing Wave Profile: {selected_material} Rod", fontsize=11, fontweight='bold', color='#00f0ff')
+    ax_rod.set_xlabel("Position along the rod (m)", fontsize=9)
+    ax_rod.set_ylabel("Relative Displacement", fontsize=9)
+    ax_rod.set_ylim(-1.2, 1.2)
+    ax_rod.legend(loc="upper right", fontsize=8)
+    ax_rod.grid(True, linestyle=':', alpha=0.3)
+    
+    # Выводим графики в правую колонку
+    with col2:
+        st.pyplot(fig)
 
-    function updateExperiment(freq) {{
-        let amp = 1.0 / Math.sqrt(1.0 + Math.pow(Q, 2) * Math.pow((freq/f0 - f0/freq), 2));
-        if (amp < 0.015) amp = 0.015; 
-        
-        const y_scope = t_arr.map(t => amp * Math.sin(2 * Math.PI * freq * t));
-        const y_rod = x_arr.map(x => amp * Math.cos(Math.PI * x / rodLength));
-        const y_rod_neg = y_rod.map(y => -y);
-        
-        Plotly.animate('scope_chart', {{
-            data: [{{y: y_scope}}]
-        }}, {{transition: {{duration: 0}}, frame: {{duration: 0, redraw: false}}}});
-        
-        Plotly.relayout('scope_chart', {{'title.text': 'DIGITAL OSCILLOSCOPE (Current Freq: ' + freq + ' Hz)'}});
-        
-        Plotly.animate('rod_chart', {{
-            data: [{{y: y_rod}}, {{y: y_rod_neg}}]
-        }}, {{transition: {{duration: 0}}, frame: {{duration: 0, redraw: false}}}});
-    }}
-
-    const gridColor = 'rgba(128, 128, 128, 0.2)';
-    const textColor = '#888888';
-
-    const layout_scope = {{
-        title: {{ text: 'DIGITAL OSCILLOSCOPE (Current Freq: 1500 Hz)', font: {{ color: '#00f0ff', size: 14, family: 'Arial' }} }},
-        xaxis: {{ title: 'Time (ms)', range: [0, 2.0], gridcolor: gridColor, tickfont: {{color: textColor}} }},
-        yaxis: {{ title: 'Amplitude (V)', range: [-1.1, 1.1], gridcolor: gridColor, tickfont: {{color: textColor}} }},
-        paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-        margin: {{ l: 50, r: 20, t: 45, b: 40 }}, height: 260, showlegend: false
-    }};
-
-    const layout_rod = {{
-        title: {{ text: 'Standing Wave Profile inside the Rod', font: {{ color: '#00f0ff', size: 14, family: 'Arial' }} }},
-        xaxis: {{ title: 'Position along the rod (m)', range: [0, rodLength], gridcolor: gridColor, tickfont: {{color: textColor}} }},
-        yaxis: {{ title: 'Relative Displacement', range: [-1.2, 1.2], gridcolor: gridColor, tickfont: {{color: textColor}} }},
-        paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-        margin: {{ l: 50, r: 20, t: 45, b: 40 }}, height: 260, showlegend: false,
-        shapes: [{{ type: 'line', x0: 0, y0: 0, x1: rodLength, y1: 0, line: {{ color: 'gray', width: 2, dash: 'dot' }} }}]
-    }};
-
-    // Первичная отрисовка чистых сеток
-    Plotly.newPlot('scope_chart', [{{ x: t_ms, y: zero_scope_y, mode: 'lines', line: {{ color: '#39ff14', width: 2.5 }} }}], layout_scope, {{displayModeBar: false}});
-    Plotly.newPlot('rod_chart', [
-        {{ x: x_arr, y: zero_rod_y, mode: 'lines', line: {{ color: waveColor, width: 3 }} }},
-        {{ x: x_arr, y: zero_rod_y, mode: 'lines', line: {{ color: waveColor, width: 1, dash: 'dash' }} }},
-        {{ x: node_x_array, y: node_y_array, mode: 'markers', marker: {{ color: 'red', size: 10 }} }}
-    ], layout_rod, {{displayModeBar: false}});
-
-    const slider = document.getElementById('realtime_slide');
-    const valDisplay = document.getElementById('freq_val');
-    updateExperiment(1500);
-
-    slider.addEventListener('input', (e) => {{
-        const val = parseInt(e.target.value);
-        valDisplay.innerText = val;
-        updateExperiment(val);
-    }});
-</script>
-"""
-
-with col2:
-    components.html(js_engine_code, height=640)
+# Запуск интерактивной части
+run_clean_matplotlib_experiment(material, mat_data)
 

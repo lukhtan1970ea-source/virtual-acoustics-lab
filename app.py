@@ -1,6 +1,6 @@
 ﻿import streamlit as st
 import numpy as np
-import streamlit.components.v1 as components
+import plotly.graph_objects as go
 
 # --- PHYSICAL CONSTANTS (9 Materials) ---
 MATERIALS = {
@@ -20,142 +20,97 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-col1, col2 = st.columns([1, 2]) # Левая колонка чуть уже, правая шире
+# Выбор материала (вызывает легкую перезагрузку только при смене металла)
+material = st.selectbox("Select Rod Material:", list(MATERIALS.keys()))
+mat_data = MATERIALS[material]
 
-with col1:
-    st.header("⚙️ Controls")
-    material = st.selectbox("Select Rod Material:", list(MATERIALS.keys()))
-    mat_data = MATERIALS[material]
-    
-    st.info("📏 **Rod Specifications:**\n* Length (L): 0.500 m\n* Diameter (d): 15.0 mm")
-    
-    st.markdown("""
-    **STUDENT GUIDE:**
-    1. Drag the slider inside the workspace.
-    2. The graphs will update **instantly in real-time** as you move the mouse.
-    3. Find the peak frequency where Oscilloscope Amplitude reaches **1.0 V**.
-    """)
+st.info("📏 **Rod Specifications:** Length (L) = 0.500 m | Diameter (d) = 15.0 mm. Use the sliders INSIDE the graphs below to tune the frequency in real-time!")
 
-# Рассчитываем теоретическую частоту резонанса для передачи в JavaScript
+# Расчет физики резонанса
 E = mat_data["E"]
 rho = mat_data["rho"]
+rod_length = 0.500
 v_sound = np.sqrt(E / rho)
-f0 = v_sound / (2 * 0.500)
-line_color = mat_data["color"]
+f0 = v_sound / (2 * rod_length)
+Q = 50 
 
-# Высокоскоростной интерактивный движок на чистом JavaScript + Chart.js
-js_engine_code = f"""
-<div id="controls" style="font-family: Arial, sans-serif; color: white; background: #1e222b; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-    <label style="display:block; margin-bottom:8px; font-weight:bold; font-size:16px;">
-        Signal Generator Frequency: <span id="freq_val" style="color:#00f0ff; font-size:18px;">1500</span> Hz
-    </label>
-    <input type="range" id="realtime_slide" min="1000" max="6000" value="1500" step="1" 
-        style="width: 100%; accent-color: #00f0ff; cursor: pointer;">
-</div>
+# Диапазон частот для анимации (с шагом 20 Гц, чтобы браузер не лагал)
+frequencies = np.arange(1000, 6001, 20)
 
-<div style="position: relative; height:260px; width:100%;"><canvas id="scopeCanvas"></canvas></div>
-<div style="position: relative; height:260px; width:100%; margin-top:20px;"><canvas id="rodCanvas"></canvas></div>
+# Генерируем данные для интерактивного графика Plotly
+fig = go.Figure()
 
-<!-- Подключаем легкую и быструю библиотеку Chart.js -->
-<script src="https://jsdelivr.net"></script>
+# Векторы времени и координат
+t = np.linspace(0, 0.002, 150)
+x = np.linspace(0, rod_length, 80)
 
-<script>
-    const f0 = {f0};
-    const Q = 50; 
-    const rodLength = 0.500;
-    const waveColor = "{line_color}";
+# 1. Создаем базовые («стартовые») кривые для начальной частоты 1500 Гц
+amp_start = 1.0 / np.sqrt(1.0 + Q**2 * (1500/f0 - f0/1500)**2)
+if amp_start < 0.02: amp_start = 0.02
+
+# Кривая осциллографа (индекс трассы 0)
+fig.add_trace(go.Scatter(x=t*1000, y=amp_start*np.sin(2*np.pi*1500*t), mode='lines', line=dict(color='#39ff14', width=3), name="Oscilloscope"))
+# Кривая стоячей волны + (индекс трассы 1)
+fig.add_trace(go.Scatter(x=x, y=amp_start*np.cos(np.pi*x/rod_length), mode='lines', line=dict(color=mat_data["color"], width=3), xaxis="x2", yaxis="y2", name="Wave Envelope"))
+# Кривая стоячей волны - (индекс трассы 2)
+fig.add_trace(go.Scatter(x=x, y=-amp_start*np.cos(np.pi*x/rod_length), mode='lines', line=dict(color=mat_data["color"], width=1, dash='dash'), xaxis="x2", yaxis="y2", showlegend=False))
+# Узел (Node) по центру (индекс трассы 3)
+fig.add_trace(go.Scatter(x=[rod_length/2], y=[0], mode='markers', marker=dict(color='red', size=10), xaxis="x2", yaxis="y2", name="Center Clamp"))
+
+# 2. Создаем кадры анимации (Frames) для каждого положения слайдера
+frames = []
+for f in frequencies:
+    amp = 1.0 / np.sqrt(1.0 + Q**2 * (f/f0 - f0/f)**2)
+    if amp < 0.02: amp = 0.02
     
-    // Генерируем статические сетки осей
-    const t_points = [];
-    const t_labels = [];
-    for(let i=0; i<=150; i++) {{
-        let t = (0.002 / 150) * i;
-        t_points.push(t);
-        t_labels.push((t * 1000).toFixed(2));
-    }}
+    y_v = amp * np.sin(2 * np.pi * f * t)
+    y_w = amp * np.cos(np.pi * x / rod_length)
     
-    const x_points = [];
-    const x_labels = [];
-    for(let i=0; i<=80; i++) {{
-        let x = (rodLength / 80) * i;
-        x_points.push(x);
-        x_labels.push(x.toFixed(3));
-    }}
+    frames.append(go.Frame(
+        data=[
+            go.Scatter(y=y_v),
+            go.Scatter(y=y_w),
+            go.Scatter(y=-y_w)
+        ],
+        name=str(f)
+    ))
 
-    // Конфігурація Осцилографа
-    const ctxScope = document.getElementById('scopeCanvas').getContext('2d');
-    const scopeChart = new Chart(ctxScope, {{
-        type: 'line',
-        data: {{
-            labels: t_labels,
-            datasets: [{{ label: 'Signal (V)', data: new Array(151).fill(0), borderColor: '#39ff14', borderWidth: 2.5, pointRadius: 0, fill: false }}]
-        }},
-        options: {{
-            responsive: true, maintainAspectRatio: false,
-            plugins: {{ title: {{ display: true, text: 'DIGITAL OSCILLOSCOPE', color: '#00f0ff', font: {{ size: 14 }} }}, legend: {{ display: false }} }},
-            scales: {{
-                x: {{ title: {{ display: true, text: 'Time (ms)', color: '#fff' }}, ticks: {{ color: '#aaa', maxTicksLimit: 10 }}, grid: {{ color: '#222' }} }},
-                y: {{ min: -1.1, max: 1.1, title: {{ display: true, text: 'Amplitude (V)', color: '#fff' }}, ticks: {{ color: '#aaa' }}, grid: {{ color: '#222' }} }}
-            }}
-        }}
-    }});
+fig.frames = frames
 
-    // Конфігурація Стрижня
-    const ctxRod = document.getElementById('rodCanvas').getContext('2d');
-    const rodChart = new Chart(ctxRod, {{
-        type: 'line',
-        data: {{
-            labels: x_labels,
-            datasets: [
-                {{ label: 'Envelope +', data: new Array(81).fill(0), borderColor: waveColor, borderWidth: 3, pointRadius: 0, fill: false }},
-                {{ label: 'Envelope -', data: new Array(81).fill(0), borderColor: waveColor, borderWidth: 1, borderDash:, pointRadius: 0, fill: false }},
-                {{ label: 'Node', data: [{{ x: 40, y: 0 }}], backgroundColor: 'red', pointRadius: 6, showLine: false }}
-            ]
-        }},
-        options: {{
-            responsive: true, maintainAspectRatio: false,
-            plugins: {{ title: {{ display: true, text: 'Standing Wave Profile inside the Rod', color: '#00f0ff', size: 14 }}, legend: {{ display: false }} }},
-            scales: {{
-                x: {{ title: {{ display: true, text: 'Position along the rod (m)', color: '#fff' }}, ticks: {{ color: '#aaa', maxTicksLimit: 10 }}, grid: {{ color: '#222' }} }},
-                y: {{ min: -1.2, max: 1.2, title: {{ display: true, text: 'Relative Displacement', color: '#fff' }}, ticks: {{ color: '#aaa' }}, grid: {{ color: '#222' }} }}
-            }}
-        }}
-    }});
+# 3. Настраиваем интерактивный слайдер Plotly, который переключает кадры внутри браузера
+sliders_steps = []
+for f in frequencies:
+    sliders_steps.append({
+        "args": [[str(f)], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}],
+        "label": str(f),
+        "method": "animate"
+    })
 
-    // Функція миттєвого оновлення
-    function updateVisuals(freq) {{
-        let amp = 1.0 / Math.sqrt(1.0 + Math.pow(Q, 2) * Math.pow((freq/f0 - f0/freq), 2));
-        if (amp < 0.02) amp = 0.02;
-        
-        // Оновлюємо дані масивів
-        const y_scope = t_points.map(t => amp * Math.sin(2 * Math.PI * freq * t));
-        const y_rod_pos = x_points.map(x => amp * Math.cos(Math.PI * x / rodLength));
-        const y_rod_neg = y_rod_pos.map(y => -y);
-        
-        scopeChart.data.datasets[0].data = y_scope;
-        scopeChart.options.plugins.title.text = 'DIGITAL OSCILLOSCOPE (Current Freq: ' + freq + ' Hz)';
-        scopeChart.update('none'); // Оновлення без зайвих анімацій інтерфейсу (максимальна швидкість)
-        
-        rodChart.data.datasets[0].data = y_rod_pos;
-        rodChart.data.datasets[1].data = y_rod_neg;
-        rodChart.update('none');
-    }}
-
-    // Слухач подій на повзунок (mousemove / input)
-    const slider = document.getElementById('realtime_slide');
-    const valDisplay = document.getElementById('freq_val');
+# Оформление двойного темного графика на одном холсте (Subplots через слои)
+fig.update_layout(
+    template="plotly_dark",
+    height=650,
+    margin=dict(l=50, r=30, t=50, b=40),
+    # Сетка первого графика (Осциллограф)
+    xaxis=dict(title="Time (ms)", domain=[0, 1.0], range=[0, 2.0], gridcolor='#222222'),
+    yaxis=dict(title="Amplitude (V)", range=[-1.1, 1.1], gridcolor='#222222'),
+    # Сетка второго графика (Стрижень) - смещена вниз
+    xaxis2=dict(title="Position along the rod (m)", domain=[0, 1.0], range=[0, rod_length], gridcolor='#222222', anchor="y2"),
+    yaxis2=dict(title="Relative Displacement", range=[-1.2, 1.2], gridcolor='#222222', anchor="x2"),
     
-    updateVisuals(1500);
+    # Распределение осей по вертикали
+    yaxis2_position=0.45,
+    grid=dict(rows=2, columns=1, pattern='independent'),
+    
+    # Внедрение слайдера
+    sliders=[{
+        "active": int(np.where(frequencies == 1500)[0][0]),
+        "currentvalue": {"prefix": "Generator Frequency: ", "suffix": " Hz", "font": {"color": "#00f0ff", "size": 16}},
+        "pad": {"t": 50},
+        "steps": sliders_steps
+    }],
+    showlegend=False
+)
 
-    slider.addEventListener('input', (e) => {{
-        const val = parseInt(e.target.value);
-        valDisplay.innerText = val;
-        updateVisuals(val);
-    }});
-</script>
-"""
-
-with col2:
-    # Отрисовка высокоскоростного HTML-движка
-    components.html(js_engine_code, height=620)
-
+# Выводим готовый интерактивный холст
+st.plotly_chart(fig, use_container_width=True)

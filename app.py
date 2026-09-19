@@ -75,8 +75,10 @@ with col1:
     slider_return = components.html(html_slider, height=95)
     
     # Catch the fast callback value
-    if slider_return is not None:
-        st.session_state.live_freq = int(slider_return)
+    # Catch the fast callback value safely
+if slider_return is not None and str(slider_return).isdigit():
+    st.session_state.live_freq = int(slider_return)
+
 
 # Extract frequency for plotting
 current_freq = st.session_state.live_freq

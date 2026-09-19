@@ -20,8 +20,7 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-# Разделение интерфейса
-col1, col2 = st.columns([1, 2])
+col1, col2 = st.columns([1, 2]) # Левая колонка чуть уже, правая с графиками — шире
 
 with col1:
     st.header("⚙️ Controls")
@@ -44,7 +43,6 @@ v_sound = np.sqrt(E / rho)
 f0 = v_sound / (2 * 0.500)
 
 # Высокоскоростной интерактивный движок на чистом JavaScript + Plotly.js
-# Все вычисления и рендеринг происходят прямо в браузере со скоростью 60 FPS
 js_engine_code = f"""
 <div id="controls" style="font-family: Arial, sans-serif; color: white; background: #1e222b; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
     <label style="display:block; margin-bottom:8px; font-weight:bold; font-size:16px;">
@@ -57,7 +55,7 @@ js_engine_code = f"""
 <div id="scope_chart"></div>
 <div id="rod_chart" style="margin-top:15px;"></div>
 
-<!-- Подключаем сверхбыструю клиентскую библиотеку Plotly прямо из CDN -->
+<!-- Подключаем библиотеку Plotly -->
 <script src="https://plot.ly"></script>
 
 <script>
@@ -65,35 +63,30 @@ js_engine_code = f"""
     const Q = 70; // Ширина резонансного пика
     const rodLength = 0.500;
     
-    // Инициализация массивов данных (оптимизированные буферы)
+    // Подготовка массивов точек
     const t_arr = [];
     for(let i=0; i<=150; i++) t_arr.push((0.002 / 150) * i);
     
     const x_arr = [];
     for(let i=0; i<=80; i++) x_arr.push((rodLength / 80) * i);
 
-    // Функция мгновенного пересчета физики и графиков
+    // Функция мгновенного пересчета графиков прямо в браузере
     function updateExperiment(freq) {{
-        // Формула Лоренца для резонанса
         let amp = 1.0 / Math.sqrt(1.0 + Math.pow(Q, 2) * Math.pow((freq/f0 - f0/freq), 2));
-        if (amp < 0.015) amp = 0.015; // Шум прибора
+        if (amp < 0.015) amp = 0.015; // Эмуляция шума
         
-        // 1. Расчет синусоиды осциллографа
         const y_scope = t_arr.map(t => amp * Math.sin(2 * Math.PI * freq * t));
-        const x_scope_ms = t_arr.map(t => t * 1000);
-        
-        // 2. Расчет профиля стоячей волны
         const y_rod = x_arr.map(x => amp * Math.cos(Math.PI * x / rodLength));
         const y_rod_neg = y_rod.map(y => -y);
         
-        // Обновление графиков Plotly «на лету» без перерисовки осей (сверхбыстрый метод)
-        Plotly.restyle('scope_chart', {{y: [y_scope]}}, [0]);
+        // Быстрое обновление линий без перезагрузки холста
+        Plotly.restyle('scope_chart', {{y: [y_scope]}});
         Plotly.relayout('scope_chart', {{'title.text': 'DIGITAL OSCILLOSCOPE (Current Freq: ' + freq + ' Hz)'}});
         
-        Plotly.restyle('rod_chart', {{y: [y_rod, y_rod_neg]}}, [0, 1]);
+        Plotly.restyle('rod_chart', {{y: [y_rod, y_rod_neg]}});
     }}
 
-    // Стили графиков (Dark Theme)
+    // Настройки стилей графиков (Темная тема)
     const layout_scope = {{
         title: {{ text: 'DIGITAL OSCILLOSCOPE (Current Freq: 1500 Hz)', font: {{ color: '#00f0ff', size: 14 }} }},
         xaxis: {{ title: 'Time (ms)', range: [0, 2.0], gridcolor: '#222222' }},
@@ -111,20 +104,19 @@ js_engine_code = f"""
         shapes: [{{ type: 'line', x0: 0, y0: 0, x1: rodLength, y1: 0, line: {{ color: 'gray', width: 2, dash: 'dot' }} }}]
     }};
 
-    // Первая отрисовка пустых шаблонов графиков
+    // Первичный рендеринг графиков
     Plotly.newPlot('scope_chart', [{{ x: t_arr.map(t => t*1000), y: t_arr.map(t => 0), mode: 'lines', line: {{ color: '#39ff14', width: 3 }} }}], layout_scope, {{displayModeBar: false}});
     Plotly.newPlot('rod_chart', [
         {{ x: x_arr, y: x_arr.map(x => 0), mode: 'lines', line: {{ color: '#00f0ff', width: 3 }} }},
         {{ x: x_arr, y: x_arr.map(x => 0), mode: 'lines', line: {{ color: '#00f0ff', width: 1, dash: 'dash' }} }},
-        {{ x: [rodLength/2], y: [0], mode: 'markers', marker: {{ color: 'red', size: 12 }} }}
+        {{ x: [rodLength/2], y: [0], mode: 'markers', marker: {{ color: 'red', size: 12 }} }} // Координата [0] теперь на месте!
     ], layout_rod, {{displayModeBar: false}});
 
-    // Запуск первичного состояния
+    // Инициализация ползунка
     const slider = document.getElementById('realtime_slide');
     const valDisplay = document.getElementById('freq_val');
     updateExperiment(1500);
 
-    // Вешаем слушатель на МГНОВЕННОЕ движение мыши (без задержек сервера)
     slider.addEventListener('input', (e) => {{
         const val = parseInt(e.target.value);
         valDisplay.innerText = val;
@@ -134,9 +126,7 @@ js_engine_code = f"""
 """
 
 with col2:
-    # Запускаем изолированный движок в правой колонке
-    components.html(js_engine_code, height=720)
-
+    components.html(js_engine_code, height=680)
 
 
 

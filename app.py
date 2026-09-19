@@ -38,18 +38,22 @@ Q = 50
 frequencies = np.arange(1000, 6001, 20)
 
 # Генерируем данные для интерактивного графика Plotly
+# Диапазон частот для анимации с высокой точностью (шаг 5 Гц для плавной прокрутки)
+frequencies = np.arange(1000, 6001, 5)
+
+# Генерируем данные для высокоточного интерактивного графика Plotly
 fig = go.Figure()
 
-# Векторы времени и координат
-t = np.linspace(0, 0.002, 150)
-x = np.linspace(0, rod_length, 80)
+# Повышаем детализацию: 500 точек для идеальной плавности синусоиды
+t = np.linspace(0, 0.002, 500)
+x = np.linspace(0, rod_length, 150)
 
 # 1. Создаем базовые («стартовые») кривые для начальной частоты 1500 Гц
 amp_start = 1.0 / np.sqrt(1.0 + Q**2 * (1500/f0 - f0/1500)**2)
 if amp_start < 0.02: amp_start = 0.02
 
 # Кривая осциллографа (индекс трассы 0)
-fig.add_trace(go.Scatter(x=t*1000, y=amp_start*np.sin(2*np.pi*1500*t), mode='lines', line=dict(color='#39ff14', width=3), name="Oscilloscope"))
+fig.add_trace(go.Scatter(x=t*1000, y=amp_start*np.sin(2*np.pi*1500*t), mode='lines', line=dict(color='#39ff14', width=2.5), name="Oscilloscope"))
 # Кривая стоячей волны + (индекс трассы 1)
 fig.add_trace(go.Scatter(x=x, y=amp_start*np.cos(np.pi*x/rod_length), mode='lines', line=dict(color=mat_data["color"], width=3), xaxis="x2", yaxis="y2", name="Wave Envelope"))
 # Кривая стоячей волны - (индекс трассы 2)
@@ -76,6 +80,16 @@ for f in frequencies:
     ))
 
 fig.frames = frames
+
+# 3. Настраиваем интерактивный слайдер Plotly, который переключает кадры внутри браузера
+sliders_steps = []
+for f in frequencies:
+    sliders_steps.append({
+        "args": [[str(f)], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}],
+        "label": str(f),
+        "method": "animate"
+    })
+
 
 # 3. Настраиваем интерактивный слайдер Plotly, который переключает кадры внутри браузера
 sliders_steps = []

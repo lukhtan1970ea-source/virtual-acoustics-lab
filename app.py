@@ -1,7 +1,6 @@
 ﻿import streamlit as st
 import numpy as np
-import pandas as pd
-import altair as alt
+import streamlit.components.v1 as components
 
 # --- PHYSICAL CONSTANTS (9 Materials) ---
 MATERIALS = {
@@ -32,74 +31,131 @@ with col1:
     
     st.markdown("""
     **STUDENT GUIDE:**
-    1. Click on the slider handle.
-    2. Use **Left/Right Keyboard Arrows** for precise 1 Hz tuning.
-    3. Find the peak frequency where Oscilloscope Amplitude reaches max values.
+    1. Drag the slider inside the workspace.
+    2. The graphs will update **instantly in real-time** as you move the mouse.
+    3. Find the peak frequency where Oscilloscope Amplitude reaches **1.0 V**.
     """)
 
-# Изолированный быстрый фрагмент для мгновенного отклика слайдера
-@st.fragment
-def run_fast_plots(selected_material, physics_data):
-    current_freq = st.slider(
-        "Signal Generator Frequency (Hz):", 
-        min_value=1000, max_value=6000, value=1500, step=1
-    )
-    
-    # Физические расчеты
-    E = physics_data["E"]
-    rho = physics_data["rho"]
-    rod_length = 0.500
-    
-    v_sound = np.sqrt(E / rho)
-    f0 = v_sound / (2 * rod_length)
-    
-    Q = 45 
-    amp = 1.0 / np.sqrt(1.0 + Q**2 * (current_freq/f0 - f0/current_freq)**2)
-    if amp < 0.02:
-        amp = 0.02
+# Рассчитываем теоретическую частоту резонанса для передачи в JavaScript
+E = mat_data["E"]
+rho = mat_data["rho"]
+v_sound = np.sqrt(E / rho)
+f0 = v_sound / (2 * 0.500)
+line_color = mat_data["color"]
 
-    # --- 1. ГРАФИК ОСЦИЛЛОГРАФА (Altair - рендеринг в браузере) ---
-    t = np.linspace(0, 0.002, 150) 
-    v_signal = amp * np.sin(2 * np.pi * current_freq * t)
-    df_scope = pd.DataFrame({"Time (ms)": t * 1000, "Amplitude (V)": v_signal})
-    
-    chart_scope = alt.Chart(df_scope).mark_line(color='#39ff14', strokeWidth=2.5).encode(
-        x=alt.X('Time (ms):Q', scale=alt.Scale(domain=[0, 2.0])),
-        y=alt.Y('Amplitude (V):Q', scale=alt.Scale(domain=[-1.1, 1.1]))
-    ).properties(
-        title=f"DIGITAL OSCILLOSCOPE (Current Freq: {current_freq} Hz)",
-        height=280
-    ).configure_view(strokeWidth=0).configure_axis(gridColor='#333333')
+# Высокоскоростной интерактивный движок на чистом JavaScript + Chart.js
+js_engine_code = f"""
+<div id="controls" style="font-family: Arial, sans-serif; color: white; background: #1e222b; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+    <label style="display:block; margin-bottom:8px; font-weight:bold; font-size:16px;">
+        Signal Generator Frequency: <span id="freq_val" style="color:#00f0ff; font-size:18px;">1500</span> Hz
+    </label>
+    <input type="range" id="realtime_slide" min="1000" max="6000" value="1500" step="1" 
+        style="width: 100%; accent-color: #00f0ff; cursor: pointer;">
+</div>
 
-    # --- 2. ГРАФИК СТРОЯЧЕЙ ВОЛНЫ (Altair) ---
-    x = np.linspace(0, rod_length, 80)
-    wave_profile = amp * np.cos(np.pi * x / rod_length)
-    df_rod = pd.DataFrame({"Position (m)": x, "Displacement": wave_profile, "Displacement_Neg": -wave_profile})
-    
-    # Основная линия волны
-    line1 = alt.Chart(df_rod).mark_line(color=physics_data["color"], strokeWidth=3).encode(
-        x=alt.X('Position (m):Q', scale=alt.Scale(domain=[0, rod_length])),
-        y=alt.Y('Displacement:Q', scale=alt.Scale(domain=[-1.2, 1.2]), title="Relative Displacement")
-    )
-    # Зеркальная пунктирная линия огибающей
-    line2 = alt.Chart(df_rod).mark_line(color=physics_data["color"], strokeWidth=1, strokeDash=[4, 4]).encode(
-        x='Position (m):Q',
-        y='Displacement_Neg:Q'
-    )
-    # Точка зажима (Node) посередине
-    node_df = pd.DataFrame({"x": [rod_length / 2], "y": [0]})
-    node_point = alt.Chart(node_df).mark_circle(color='red', size=120).encode(x='x:Q', y='y:Q')
-    
-    # Сборка графика воедино
-    chart_rod = alt.layer(line1, line2, node_point).properties(
-        title=f"Standing Wave Profile: {selected_material} Rod",
-        height=280
-    ).configure_view(strokeWidth=0).configure_axis(gridColor='#333333')
+<div style="position: relative; height:260px; width:100%;"><canvas id="scopeCanvas"></canvas></div>
+<div style="position: relative; height:260px; width:100%; margin-top:20px;"><canvas id="rodCanvas"></canvas></div>
 
-    # Вывод графиков в правую колонку
-    with col2:
-        st.altair_chart(chart_scope, use_container_width=True)
-        st.altair_chart(chart_rod, use_container_width=True)
+<!-- Подключаем легкую и быструю библиотеку Chart.js -->
+<script src="https://jsdelivr.net"></script>
 
-run_fast_plots(material, mat_data)
+<script>
+    const f0 = {f0};
+    const Q = 50; 
+    const rodLength = 0.500;
+    const waveColor = "{line_color}";
+    
+    // Генерируем статические сетки осей
+    const t_points = [];
+    const t_labels = [];
+    for(let i=0; i<=150; i++) {{
+        let t = (0.002 / 150) * i;
+        t_points.push(t);
+        t_labels.push((t * 1000).toFixed(2));
+    }}
+    
+    const x_points = [];
+    const x_labels = [];
+    for(let i=0; i<=80; i++) {{
+        let x = (rodLength / 80) * i;
+        x_points.push(x);
+        x_labels.push(x.toFixed(3));
+    }}
+
+    // Конфігурація Осцилографа
+    const ctxScope = document.getElementById('scopeCanvas').getContext('2d');
+    const scopeChart = new Chart(ctxScope, {{
+        type: 'line',
+        data: {{
+            labels: t_labels,
+            datasets: [{{ label: 'Signal (V)', data: new Array(151).fill(0), borderColor: '#39ff14', borderWidth: 2.5, pointRadius: 0, fill: false }}]
+        }},
+        options: {{
+            responsive: true, maintainAspectRatio: false,
+            plugins: {{ title: {{ display: true, text: 'DIGITAL OSCILLOSCOPE', color: '#00f0ff', font: {{ size: 14 }} }}, legend: {{ display: false }} }},
+            scales: {{
+                x: {{ title: {{ display: true, text: 'Time (ms)', color: '#fff' }}, ticks: {{ color: '#aaa', maxTicksLimit: 10 }}, grid: {{ color: '#222' }} }},
+                y: {{ min: -1.1, max: 1.1, title: {{ display: true, text: 'Amplitude (V)', color: '#fff' }}, ticks: {{ color: '#aaa' }}, grid: {{ color: '#222' }} }}
+            }}
+        }}
+    }});
+
+    // Конфігурація Стрижня
+    const ctxRod = document.getElementById('rodCanvas').getContext('2d');
+    const rodChart = new Chart(ctxRod, {{
+        type: 'line',
+        data: {{
+            labels: x_labels,
+            datasets: [
+                {{ label: 'Envelope +', data: new Array(81).fill(0), borderColor: waveColor, borderWidth: 3, pointRadius: 0, fill: false }},
+                {{ label: 'Envelope -', data: new Array(81).fill(0), borderColor: waveColor, borderWidth: 1, borderDash:, pointRadius: 0, fill: false }},
+                {{ label: 'Node', data: [{{ x: 40, y: 0 }}], backgroundColor: 'red', pointRadius: 6, showLine: false }}
+            ]
+        }},
+        options: {{
+            responsive: true, maintainAspectRatio: false,
+            plugins: {{ title: {{ display: true, text: 'Standing Wave Profile inside the Rod', color: '#00f0ff', size: 14 }}, legend: {{ display: false }} }},
+            scales: {{
+                x: {{ title: {{ display: true, text: 'Position along the rod (m)', color: '#fff' }}, ticks: {{ color: '#aaa', maxTicksLimit: 10 }}, grid: {{ color: '#222' }} }},
+                y: {{ min: -1.2, max: 1.2, title: {{ display: true, text: 'Relative Displacement', color: '#fff' }}, ticks: {{ color: '#aaa' }}, grid: {{ color: '#222' }} }}
+            }}
+        }}
+    }});
+
+    // Функція миттєвого оновлення
+    function updateVisuals(freq) {{
+        let amp = 1.0 / Math.sqrt(1.0 + Math.pow(Q, 2) * Math.pow((freq/f0 - f0/freq), 2));
+        if (amp < 0.02) amp = 0.02;
+        
+        // Оновлюємо дані масивів
+        const y_scope = t_points.map(t => amp * Math.sin(2 * Math.PI * freq * t));
+        const y_rod_pos = x_points.map(x => amp * Math.cos(Math.PI * x / rodLength));
+        const y_rod_neg = y_rod_pos.map(y => -y);
+        
+        scopeChart.data.datasets[0].data = y_scope;
+        scopeChart.options.plugins.title.text = 'DIGITAL OSCILLOSCOPE (Current Freq: ' + freq + ' Hz)';
+        scopeChart.update('none'); // Оновлення без зайвих анімацій інтерфейсу (максимальна швидкість)
+        
+        rodChart.data.datasets[0].data = y_rod_pos;
+        rodChart.data.datasets[1].data = y_rod_neg;
+        rodChart.update('none');
+    }}
+
+    // Слухач подій на повзунок (mousemove / input)
+    const slider = document.getElementById('realtime_slide');
+    const valDisplay = document.getElementById('freq_val');
+    
+    updateVisuals(1500);
+
+    slider.addEventListener('input', (e) => {{
+        const val = parseInt(e.target.value);
+        valDisplay.innerText = val;
+        updateVisuals(val);
+    }});
+</script>
+"""
+
+with col2:
+    # Отрисовка высокоскоростного HTML-движка
+    components.html(js_engine_code, height=620)
 

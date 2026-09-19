@@ -20,7 +20,7 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-col1, col2 = st.columns([1, 2]) # Левая колонка чуть уже, правая шире
+col1, col2 = st.columns([1, 2]) # Левая колонка под управление, правая шире под графики
 
 with col1:
     st.header("⚙️ Controls")
@@ -43,8 +43,11 @@ v_sound = np.sqrt(E / rho)
 f0 = v_sound / (2 * 0.500)
 line_color = mat_data["color"]
 
-# Высокоскоростной интерактивный движок на Plotly.js
+# Высокоскоростной интерактивный движок на Plotly.js (Защищенный от автовырезания текста)
 js_engine_code = f"""
+<!-- Скрипт Plotly загружаем в первую очередь -->
+<script src="https://plot.ly"></script>
+
 <div id="controls" style="font-family: Arial, sans-serif; color: white; background: #1e222b; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
     <label style="display:block; margin-bottom:8px; font-weight:bold; font-size:16px;">
         Signal Generator Frequency: <span id="freq_val" style="color:#00f0ff; font-size:18px;">1500</span> Hz
@@ -55,8 +58,6 @@ js_engine_code = f"""
 
 <div id="scope_chart"></div>
 <div id="rod_chart" style="margin-top:15px;"></div>
-
-<script src="https://plot.ly"></script>
 
 <script>
     const f0 = {f0};
@@ -71,6 +72,12 @@ js_engine_code = f"""
     
     const x_arr = [];
     for(let i=0; i<=200; i++) x_arr.push((rodLength / 200) * i);
+
+    // Безопасная инициализация нулевых массивов (защита от вырезания скобок фильтрами)
+    const zero_scope_y = new Array(801).fill(0);
+    const zero_rod_y = new Array(201).fill(0);
+    const node_x_array = new Array(1).fill(rodLength / 2);
+    const node_y_array = new Array(1).fill(0);
 
     function updateExperiment(freq) {{
         let amp = 1.0 / Math.sqrt(1.0 + Math.pow(Q, 2) * Math.pow((freq/f0 - f0/freq), 2));
@@ -99,7 +106,7 @@ js_engine_code = f"""
         xaxis: {{ title: 'Time (ms)', range: [0, 2.0], gridcolor: gridColor, tickfont: {{color: textColor}} }},
         yaxis: {{ title: 'Amplitude (V)', range: [-1.1, 1.1], gridcolor: gridColor, tickfont: {{color: textColor}} }},
         paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-        margin: {{ l: 50, r: 20, t: 45, b: 40 }}, height: 290, showlegend: false
+        margin: {{ l: 50, r: 20, t: 45, b: 40 }}, height: 260, showlegend: false
     }};
 
     const layout_rod = {{
@@ -107,15 +114,16 @@ js_engine_code = f"""
         xaxis: {{ title: 'Position along the rod (m)', range: [0, rodLength], gridcolor: gridColor, tickfont: {{color: textColor}} }},
         yaxis: {{ title: 'Relative Displacement', range: [-1.2, 1.2], gridcolor: gridColor, tickfont: {{color: textColor}} }},
         paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-        margin: {{ l: 50, r: 20, t: 45, b: 40 }}, height: 290, showlegend: false,
+        margin: {{ l: 50, r: 20, t: 45, b: 40 }}, height: 260, showlegend: false,
         shapes: [{{ type: 'line', x0: 0, y0: 0, x1: rodLength, y1: 0, line: {{ color: 'gray', width: 2, dash: 'dot' }} }}]
     }};
 
-    Plotly.newPlot('scope_chart', [{{ x: t_ms, y: t_arr.map(t => 0), mode: 'lines', line: {{ color: '#39ff14', width: 2.5 }} }}], layout_scope, {{displayModeBar: false}});
+    // Первичная отрисовка чистых сеток
+    Plotly.newPlot('scope_chart', [{{ x: t_ms, y: zero_scope_y, mode: 'lines', line: {{ color: '#39ff14', width: 2.5 }} }}], layout_scope, {{displayModeBar: false}});
     Plotly.newPlot('rod_chart', [
-        {{ x: x_arr, y: x_arr.map(x => 0), mode: 'lines', line: {{ color: waveColor, width: 3 }} }},
-        {{ x: x_arr, y: x_arr.map(x => 0), mode: 'lines', line: {{ color: waveColor, width: 1, dash: 'dash' }} }},
-        {{ x: [rodLength/2], y: [0], mode: 'markers', marker: {{ color: 'red', size: 10 }} }}
+        {{ x: x_arr, y: zero_rod_y, mode: 'lines', line: {{ color: waveColor, width: 3 }} }},
+        {{ x: x_arr, y: zero_rod_y, mode: 'lines', line: {{ color: waveColor, width: 1, dash: 'dash' }} }},
+        {{ x: node_x_array, y: node_y_array, mode: 'markers', marker: {{ color: 'red', size: 10 }} }}
     ], layout_rod, {{displayModeBar: false}});
 
     const slider = document.getElementById('realtime_slide');
@@ -132,3 +140,4 @@ js_engine_code = f"""
 
 with col2:
     components.html(js_engine_code, height=640)
+

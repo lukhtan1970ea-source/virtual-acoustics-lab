@@ -35,7 +35,7 @@ f0 = v_sound / (2 * rod_length)
 Q = 50 
 
 # Диапазон частот для анимации (с шагом 20 Гц, чтобы браузер не лагал)
-frequencies = np.arange(1000, 6001, 20)
+frequencies = np.arange(1000, 6001, 5)
 
 # Генерируем данные для интерактивного графика Plotly
 fig = go.Figure()

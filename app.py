@@ -41,8 +41,8 @@ frequencies = np.arange(1000, 6001, 20)
 fig = go.Figure()
 
 # Векторы времени и координат
-t = np.linspace(0, 0.002, 200)
-x = np.linspace(0, rod_length, 100)
+t = np.linspace(0, 0.002, 150)
+x = np.linspace(0, rod_length, 80)
 
 # 1. Создаем базовые («стартовые») кривые для начальной частоты 1500 Гц
 amp_start = 1.0 / np.sqrt(1.0 + Q**2 * (1500/f0 - f0/1500)**2)

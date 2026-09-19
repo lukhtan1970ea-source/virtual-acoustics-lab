@@ -114,4 +114,3 @@ fig.update_layout(
 
 # Выводим готовый интерактивный холст
 st.plotly_chart(fig, use_container_width=True)
-

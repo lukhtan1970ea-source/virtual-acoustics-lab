@@ -21,7 +21,8 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-col1, col2 = st.columns()
+col1, col2 = st.columns([1, 2])
+
 
 with col1:
     st.header("⚙️ Controls")

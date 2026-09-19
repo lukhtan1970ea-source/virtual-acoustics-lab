@@ -23,7 +23,6 @@ st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
 col1, col2 = st.columns([1, 2])
 
-
 with col1:
     st.header("⚙️ Controls")
     material = st.selectbox("Select Rod Material:", list(MATERIALS.keys()))
@@ -34,15 +33,13 @@ with col1:
     st.markdown("""
     **STUDENT GUIDE:**
     1. Drag the custom slider below.
-    2. The graphs will update **instantly in real-time** as you move your mouse.
-    3. Find the peak where Oscilloscope Amplitude reaches max values (**1.0 V**).
+    2. Watch the graphs update **instantly** in real-time.
+    3. Find the peak frequency where Oscilloscope Amplitude reaches exactly **1.0 V**.
     """)
 
     st.write("---")
     st.write("**Drag for Real-Time Tuning:**")
 
-    # JavaScript + HTML5 Custom Real-Time Slider Integration
-    # It catches mousemove events and sends data back to Streamlit instantly
     if "live_freq" not in st.session_state:
         st.session_state.live_freq = 1500
 
@@ -57,12 +54,10 @@ with col1:
         const slider = document.getElementById('realtime_slide');
         const valDisplay = document.getElementById('freq_val');
         
-        // Listen to active dragging (mousemove/input) without waiting for mouseup
         slider.addEventListener('input', (e) => {{
             const val = e.target.value;
             valDisplay.innerText = val;
             
-            // Modern Streamlit JS bridge to push data instantly
             window.parent.postMessage({{
                 type: 'streamlit:setComponentValue',
                 value: parseInt(val)
@@ -71,16 +66,11 @@ with col1:
     </script>
     """
     
-    # Render the custom high-speed slider component
     slider_return = components.html(html_slider, height=95)
     
-    # Catch the fast callback value
-    # Catch the fast callback value safely
-if slider_return is not None and str(slider_return).isdigit():
-    st.session_state.live_freq = int(slider_return)
+    if slider_return is not None and str(slider_return).isdigit():
+        st.session_state.live_freq = int(slider_return)
 
-
-# Extract frequency for plotting
 current_freq = st.session_state.live_freq
 
 # Physics Calculations
@@ -91,18 +81,23 @@ rod_length = 0.500
 v_sound = np.sqrt(E / rho)
 f0 = v_sound / (2 * rod_length)
 
-Q = 200 
+# Q-factor set to 80 for smoother, visible resonance approach
+Q = 80 
 amp = 1.0 / np.sqrt(1.0 + Q**2 * (current_freq/f0 - f0/current_freq)**2)
 
+# гарантируем минимальную видимость синусоиды (шум прибора = 0.02 В)
+if amp < 0.02:
+    amp = 0.02
+
 # --- 1. DIGITAL OSCILLOSCOPE (Plotly) ---
-t = np.linspace(0, 0.002, 150) # Lightweight points vector
+t = np.linspace(0, 0.002, 200) 
 v_signal = amp * np.sin(2 * np.pi * current_freq * t)
 
 fig_scope = go.Figure()
 fig_scope.add_trace(go.Scatter(x=t*1000, y=v_signal, mode='lines', line=dict(color='#39ff14', width=3)))
 fig_scope.update_layout(
     title=dict(text="DIGITAL OSCILLOSCOPE (Receiver Output)", font=dict(color='#00f0ff', size=14, family="Arial")),
-    xaxis=dict(title="Time (ms)", range=[0, 2], gridcolor='#222222'),
+    xaxis=dict(title="Time (ms)", range=[0, 2.0], gridcolor='#222222'),
     yaxis=dict(title="Amplitude (V)", range=[-1.1, 1.1], gridcolor='#222222'),
     template="plotly_dark",
     margin=dict(l=40, r=20, t=40, b=40),
@@ -111,7 +106,7 @@ fig_scope.update_layout(
 )
 
 # --- 2. STANDING WAVE PROFILE (Plotly) ---
-x = np.linspace(0, rod_length, 80)
+x = np.linspace(0, rod_length, 100)
 wave_profile = amp * np.cos(np.pi * x / rod_length)
 
 fig_rod = go.Figure()
@@ -133,6 +128,7 @@ fig_rod.update_layout(
 with col2:
     st.plotly_chart(fig_scope, use_container_width=True, key="scope_chart")
     st.plotly_chart(fig_rod, use_container_width=True, key="rod_chart")
+
 
 
 

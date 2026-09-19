@@ -43,7 +43,7 @@ v_sound = np.sqrt(E / rho)
 f0 = v_sound / (2 * 0.500)
 line_color = mat_data["color"]
 
-# Высокоскоростной интерактивный движок на Plotly.js без использования тяжелых кадров Python
+# Высокоскоростной интерактивный движок на Plotly.js
 js_engine_code = f"""
 <div id="controls" style="font-family: Arial, sans-serif; color: white; background: #1e222b; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
     <label style="display:block; margin-bottom:8px; font-weight:bold; font-size:16px;">
@@ -64,12 +64,11 @@ js_engine_code = f"""
     const rodLength = 0.500;
     const waveColor = "{line_color}";
     
-    // Генерируем 800 точек по оси времени для ИДЕАЛЬНОЙ аналоговой плавности синуса
+    // Генерируем 800 точек для идеальной аналоговой плавности
     const t_arr = [];
     for(let i=0; i<=800; i++) t_arr.push((0.002 / 800) * i);
     const t_ms = t_arr.map(t => t * 1000);
     
-    // 200 точек для профиля стержня
     const x_arr = [];
     for(let i=0; i<=200; i++) x_arr.push((rodLength / 200) * i);
 
@@ -81,7 +80,6 @@ js_engine_code = f"""
         const y_rod = x_arr.map(x => amp * Math.cos(Math.PI * x / rodLength));
         const y_rod_neg = y_rod.map(y => -y);
         
-        // Метод animate мгновенно перерисовывает линию, стирая старую (без полупрозрачности)
         Plotly.animate('scope_chart', {{
             data: [{{y: y_scope}}]
         }}, {{transition: {{duration: 0}}, frame: {{duration: 0, redraw: false}}}});
@@ -93,9 +91,8 @@ js_engine_code = f"""
         }}, {{transition: {{duration: 0}}, frame: {{duration: 0, redraw: false}}}});
     }}
 
-    const isDark = window.parent.document.body.getAttribute('data-test-script-state') !== 'light';
     const gridColor = 'rgba(128, 128, 128, 0.2)';
-    const textColor = '#ffffff';
+    const textColor = '#888888';
 
     const layout_scope = {{
         title: {{ text: 'DIGITAL OSCILLOSCOPE (Current Freq: 1500 Hz)', font: {{ color: '#00f0ff', size: 14, family: 'Arial' }} }},
@@ -118,7 +115,7 @@ js_engine_code = f"""
     Plotly.newPlot('rod_chart', [
         {{ x: x_arr, y: x_arr.map(x => 0), mode: 'lines', line: {{ color: waveColor, width: 3 }} }},
         {{ x: x_arr, y: x_arr.map(x => 0), mode: 'lines', line: {{ color: waveColor, width: 1, dash: 'dash' }} }},
-        {{ x: [rodLength/2], y:, mode: 'markers', marker: {{ color: 'red', size: 10 }} }}
+        {{ x: [rodLength/2], y: [0], mode: 'markers', marker: {{ color: 'red', size: 10 }} }}
     ], layout_rod, {{displayModeBar: false}});
 
     const slider = document.getElementById('realtime_slide');

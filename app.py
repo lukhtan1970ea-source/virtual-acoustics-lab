@@ -38,7 +38,8 @@ with col1:
     """)
 
 # Изолированный фрагмент: при движении слайдера Streamlit обновляет ТОЛЬКО этот блок
-@st.experimental_fragment
+@st.fragment
+
 def run_experiment_block(selected_material, physics_data):
     # Плавный слайдер с шагом 1 Гц
     current_freq = st.slider(

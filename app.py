@@ -15,81 +15,85 @@ MATERIALS = {
     "Silver": {"E": 0.83e11, "rho": 10500, "color": "#ffffff"}
 }
 
-# Page Configuration
+# 1. Page Configuration (Static part - loaded once)
 st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
-
-# Custom Dark Theme Styles
-
 
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-# Layout Split: Sidebar for Controls, Main Panel for Graphs
+# Create layout layout columns
 col1, col2 = st.columns([1, 2])
 
 with col1:
     st.header("⚙️ Controls")
-    
-    # Material Dropdown
+    # Material selection triggers full layout, but it's rare
     material = st.selectbox("Select Rod Material:", list(MATERIALS.keys()))
     mat_data = MATERIALS[material]
     
-    # Fixed Specifications Display
     st.info("📏 **Rod Specifications:**\n* Length (L): 0.500 m\n* Diameter (d): 15.0 mm")
     
-    # Frequency Slider (Wider range to cover all new metals)
-    current_freq = st.slider("Signal Generator Frequency (Hz):", 
-                             min_value=1000, max_value=6000, value=1500, step=1)
-    
-    # Text Guide
     st.markdown("""
     **STUDENT GUIDE:**
-    1. Tune the generator frequency to find the resonance maximum on the oscilloscope.
-    2. At peak amplitude (V = 1.0), a standing wave forms (fundamental mode).
-    3. Record the resonance frequency ($f_0$) to calculate Sound Velocity ($v$) and Young's Modulus ($E$).
+    1. Drag the slider to change frequency.
+    2. Click on the slider and use **Left/Right Keyboard Arrows** for ultra-precise tuning (1 Hz steps).
+    3. Find the peak where Oscilloscope Amplitude reaches **1.0 V**.
     """)
 
-# Physics Calculations
-E = mat_data["E"]
-rho = mat_data["rho"]
-rod_length = 0.500
+# 2. Isolated Interactive Fragment (This block runs instantly inside the browser cache)
+@st.fragment
+def render_interactive_plots(material_name, mat_info):
+    # Dynamic Slider inside the isolated fragment
+    current_freq = st.slider(
+        "Signal Generator Frequency (Hz):", 
+        min_value=1000, max_value=6000, value=1500, step=1
+    )
+    
+    # Physics Calculations (Lightweight mathematics)
+    E = mat_info["E"]
+    rho = mat_info["rho"]
+    rod_length = 0.500
+    
+    v_sound = np.sqrt(E / rho)
+    f0 = v_sound / (2 * rod_length)
+    
+    # Lorentzian resonance profile
+    Q = 200 
+    amp = 1.0 / np.sqrt(1.0 + Q**2 * (current_freq/f0 - f0/current_freq)**2)
+    
+    # Fast Plotting Block (Optimized vectors)
+    plt.style.use('dark_background')
+    fig, (ax_scope, ax_rod) = plt.subplots(2, 1, figsize=(7, 6))
+    fig.tight_layout(pad=3.5)
+    
+    # 1. Digital Oscilloscope (Reduced to 300 points for immediate rendering)
+    t = np.linspace(0, 0.002, 300)
+    v_signal = amp * np.sin(2 * np.pi * current_freq * t)
+    ax_scope.plot(t*1000, v_signal, color='#39ff14', linewidth=2)
+    ax_scope.grid(True, color='#333333', linestyle='--')
+    ax_scope.set_title("DIGITAL OSCILLOSCOPE (Receiver Output)", fontsize=10, fontweight='bold', color='#00f0ff')
+    ax_scope.set_xlabel("Time (ms)", fontsize=9)
+    ax_scope.set_ylabel("Amplitude (V)", fontsize=9)
+    ax_scope.set_ylim(-1.1, 1.1)
+    
+    # 2. Standing Wave Profile (Reduced to 100 points)
+    x = np.linspace(0, rod_length, 100)
+    wave_profile = amp * np.cos(np.pi * x / rod_length)
+    ax_rod.axhline(0, color='white', lw=3, alpha=0.3)
+    ax_rod.plot(x, wave_profile, color=mat_info["color"], linewidth=3, label="Displacement Envelope")
+    ax_rod.plot(x, -wave_profile, color=mat_info["color"], linewidth=1, linestyle='--')
+    ax_rod.plot(rod_length/2, 0, 'ro', markersize=10, label="Clamped Center (Node)")
+    ax_rod.set_title(f"Standing Wave Profile: {material_name} Rod", fontsize=10, fontweight='bold', color='#00f0ff')
+    ax_rod.set_xlabel("Position along the rod (m)", fontsize=9)
+    ax_rod.set_ylabel("Relative Displacement", fontsize=9)
+    ax_rod.set_ylim(-1.2, 1.2)
+    ax_rod.legend(loc="upper right", fontsize=8)
+    ax_rod.grid(True, linestyle=':', alpha=0.4)
+    
+    # Output graph to the right column smoothly
+    with col2:
+        st.pyplot(fig)
 
-v_sound = np.sqrt(E / rho)
-f0 = v_sound / (2 * rod_length)
+# Run our optimized fragment
+render_interactive_plots(material, mat_data)
 
-# Resonance Curve Profile (Lorentzian distribution)
-Q = 200 
-amp = 1.0 / np.sqrt(1.0 + Q**2 * (current_freq/f0 - f0/current_freq)**2)
-
-# Graph Plotting
-plt.style.use('dark_background')
-fig, (ax_scope, ax_rod) = plt.subplots(2, 1, figsize=(8, 7))
-fig.tight_layout(pad=4.0)
-
-# 1. Digital Oscilloscope
-t = np.linspace(0, 0.002, 1000)
-v_signal = amp * np.sin(2 * np.pi * current_freq * t)
-ax_scope.plot(t*1000, v_signal, color='#39ff14', linewidth=2)
-ax_scope.grid(True, color='#333333', linestyle='--')
-ax_scope.set_title("DIGITAL OSCILLOSCOPE (Receiver Output)", fontsize=11, fontweight='bold', color='#00f0ff')
-ax_scope.set_xlabel("Time (ms)")
-ax_scope.set_ylabel("Amplitude (V)")
-ax_scope.set_ylim(-1.1, 1.1)
-
-# 2. Standing Wave Profile
-x = np.linspace(0, rod_length, 200)
-wave_profile = amp * np.cos(np.pi * x / rod_length)
-ax_rod.axhline(0, color='white', lw=3, alpha=0.3)
-ax_rod.plot(x, wave_profile, color=mat_data["color"], linewidth=3, label="Displacement Envelope")
-ax_rod.plot(x, -wave_profile, color=mat_data["color"], linewidth=1, linestyle='--')
-ax_rod.plot(rod_length/2, 0, 'ro', markersize=10, label="Clamped Center (Node)")
-ax_rod.set_title(f"Standing Wave Profile inside the {material} Rod", fontsize=11, fontweight='bold', color='#00f0ff')
-ax_rod.set_xlabel("Position along the rod (m)")
-ax_rod.set_ylabel("Relative Displacement")
-ax_rod.set_ylim(-1.2, 1.2)
-ax_rod.legend(loc="upper right")
-ax_rod.grid(True, linestyle=':', alpha=0.4)
-
-with col2:
-    st.pyplot(fig)
 

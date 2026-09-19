@@ -20,11 +20,11 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-# Выбор материала (вызывает легкую перезагрузку только при смене металла)
+# Выбор материала
 material = st.selectbox("Select Rod Material:", list(MATERIALS.keys()))
 mat_data = MATERIALS[material]
 
-st.info("📏 **Rod Specifications:** Length (L) = 0.500 m | Diameter (d) = 15.0 mm. Use the sliders INSIDE the graphs below to tune the frequency in real-time!")
+st.info("📏 **Rod Specifications:** Length (L) = 0.500 m | Diameter (d) = 15.0 mm. Use the slider INSIDE the graph below to tune the frequency in real-time!")
 
 # Расчет физики резонанса
 E = mat_data["E"]
@@ -34,30 +34,27 @@ v_sound = np.sqrt(E / rho)
 f0 = v_sound / (2 * rod_length)
 Q = 50 
 
-# Диапазон частот для анимации (с шагом 20 Гц, чтобы браузер не лагал)
-frequencies = np.arange(1000, 6001, 20)
+# ОПТИМИЗИРОВАННЫЙ ШАГ: 10 Гц для идеального баланса плавности и скорости
+frequencies = np.arange(1000, 6001, 10)
 
-# Генерируем данные для интерактивного графика Plotly
 fig = go.Figure()
 
-# Векторы времени и координат
-t = np.linspace(0, 0.002, 150)
-x = np.linspace(0, rod_length, 80)
+# ПОВЫШЕННАЯ ДЕТАЛИЗАЦИЯ: 400 точек дают абсолютно гладкую аналоговую синусоиду
+t = np.linspace(0, 0.002, 400)
+x = np.linspace(0, rod_length, 120)
 
-# 1. Создаем базовые («стартовые») кривые для начальной частоты 1500 Гц
-amp_start = 1.0 / np.sqrt(1.0 + Q**2 * (1500/f0 - f0/1500)**2)
+# Стартовая частота (середина диапазона для красивой инициализации)
+start_f = 3500
+amp_start = 1.0 / np.sqrt(1.0 + Q**2 * (start_f/f0 - f0/start_f)**2)
 if amp_start < 0.02: amp_start = 0.02
 
-# Кривая осциллографа (индекс трассы 0)
-fig.add_trace(go.Scatter(x=t*1000, y=amp_start*np.sin(2*np.pi*1500*t), mode='lines', line=dict(color='#39ff14', width=3), name="Oscilloscope"))
-# Кривая стоячей волны + (индекс трассы 1)
+# Базовые трассы (Очищенные маркеры без дублирования)
+fig.add_trace(go.Scatter(x=t*1000, y=amp_start*np.sin(2*np.pi*start_f*t), mode='lines', line=dict(color='#39ff14', width=3), name="Oscilloscope"))
 fig.add_trace(go.Scatter(x=x, y=amp_start*np.cos(np.pi*x/rod_length), mode='lines', line=dict(color=mat_data["color"], width=3), xaxis="x2", yaxis="y2", name="Wave Envelope"))
-# Кривая стоячей волны - (индекс трассы 2)
 fig.add_trace(go.Scatter(x=x, y=-amp_start*np.cos(np.pi*x/rod_length), mode='lines', line=dict(color=mat_data["color"], width=1, dash='dash'), xaxis="x2", yaxis="y2", showlegend=False))
-# Узел (Node) по центру (индекс трассы 3)
 fig.add_trace(go.Scatter(x=[rod_length/2], y=[0], mode='markers', marker=dict(color='red', size=10), xaxis="x2", yaxis="y2", name="Center Clamp"))
 
-# 2. Создаем кадры анимации (Frames) для каждого положения слайдера
+# Генерация чистых кадров без наслоения
 frames = []
 for f in frequencies:
     amp = 1.0 / np.sqrt(1.0 + Q**2 * (f/f0 - f0/f)**2)
@@ -74,10 +71,9 @@ for f in frequencies:
         ],
         name=str(f)
     ))
-
 fig.frames = frames
 
-# 3. Настраиваем интерактивный слайдер Plotly, который переключает кадры внутри браузера
+# Шаги слайдера Plotly
 sliders_steps = []
 for f in frequencies:
     sliders_steps.append({
@@ -86,25 +82,20 @@ for f in frequencies:
         "method": "animate"
     })
 
-# Оформление двойного темного графика на одном холсте (Subplots через слои)
+# Оформление универсальной сетки (отчетливо видна и на светлом, и на темном фоне)
+grid_color = 'rgba(128, 128, 128, 0.25)'
+
 fig.update_layout(
-    template="plotly_dark",
     height=650,
     margin=dict(l=50, r=30, t=50, b=40),
-    # Сетка первого графика (Осциллограф)
-    xaxis=dict(title="Time (ms)", domain=[0, 1.0], range=[0, 2.0], gridcolor='#222222'),
-    yaxis=dict(title="Amplitude (V)", range=[-1.1, 1.1], gridcolor='#222222'),
-    # Сетка второго графика (Стрижень) - смещена вниз
-    xaxis2=dict(title="Position along the rod (m)", domain=[0, 1.0], range=[0, rod_length], gridcolor='#222222', anchor="y2"),
-    yaxis2=dict(title="Relative Displacement", range=[-1.2, 1.2], gridcolor='#222222', anchor="x2"),
-    
-    # Распределение осей по вертикали
+    xaxis=dict(title="Time (ms)", domain=[0, 1.0], range=[0, 2.0], gridcolor=grid_color),
+    yaxis=dict(title="Amplitude (V)", range=[-1.1, 1.1], gridcolor=grid_color),
+    xaxis2=dict(title="Position along the rod (m)", domain=[0, 1.0], range=[0, rod_length], gridcolor=grid_color, anchor="y2"),
+    yaxis2=dict(title="Relative Displacement", range=[-1.2, 1.2], gridcolor=grid_color, anchor="x2"),
     yaxis2_position=0.45,
     grid=dict(rows=2, columns=1, pattern='independent'),
-    
-    # Внедрение слайдера
     sliders=[{
-        "active": int(np.where(frequencies == 1500)[0][0]),
+        "active": int(np.where(frequencies == start_f)[0][0]),
         "currentvalue": {"prefix": "Generator Frequency: ", "suffix": " Hz", "font": {"color": "#00f0ff", "size": 16}},
         "pad": {"t": 50},
         "steps": sliders_steps
@@ -112,5 +103,6 @@ fig.update_layout(
     showlegend=False
 )
 
-# Выводим готовый интерактивный холст
-st.plotly_chart(fig, use_container_width=True)
+# КРИТИЧЕСКИЙ МОМЕНТ: динамический ключ привязан к металлу. 
+# Смена металла полностью уничтожает старый кэш Plotly, предотвращая полупрозрачность!
+st.plotly_chart(fig, use_container_width=True, key=f"plotly_lab_{material}")

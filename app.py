@@ -20,7 +20,8 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-col1, col2 = st.columns([1, 2]) # Левая колонка чуть уже, правая шире под графики
+# Основная разметка экрана (2 колонки)
+col1, col2 = st.columns(2)
 
 with col1:
     st.header("⚙️ Controls")
@@ -31,15 +32,15 @@ with col1:
     
     st.markdown("""
     **STUDENT GUIDE:**
-    1. Click on the slider handle inside the workspace.
-    2. Use **Left/Right Keyboard Arrows** for ultra-precise 1 Hz tuning.
+    1. Click on the slider handle.
+    2. Use **Left/Right Keyboard Arrows** for precise 1 Hz tuning.
     3. Find the peak frequency where Oscilloscope Amplitude reaches **1.0 V**.
     """)
 
-# Изолированный фрагмент (убирает тормоза при движении слайдера)
+# Изолированный фрагмент (убирает глобальные тормоза страницы)
 @st.fragment
-def run_clean_matplotlib_experiment(selected_material, physics_data):
-    # Плавный слайдер с шагом 1 Гц
+def run_experiment_block(selected_material, physics_data):
+    # Стандартный надежный слайдер
     current_freq = st.slider(
         "Signal Generator Frequency (Hz):", 
         min_value=1000, max_value=6000, value=1500, step=1
@@ -53,7 +54,7 @@ def run_clean_matplotlib_experiment(selected_material, physics_data):
     v_sound = np.sqrt(E / rho)
     f0 = v_sound / (2 * rod_length)
     
-    Q = 50 # Комфортная ширина пика для поиска
+    Q = 45 # Оптимальная ширина пика для ручного поиска
     amp = 1.0 / np.sqrt(1.0 + Q**2 * (current_freq/f0 - f0/current_freq)**2)
     
     if amp < 0.02:
@@ -61,40 +62,37 @@ def run_clean_matplotlib_experiment(selected_material, physics_data):
 
     # Создание графиков через классический Matplotlib (Dark стиль)
     plt.style.use('dark_background')
-    fig, (ax_scope, ax_rod) = plt.subplots(2, 1, figsize=(7, 6.5))
-    fig.tight_layout(pad=4.0)
+    fig, (ax_scope, ax_rod) = plt.subplots(2, 1, figsize=(7, 6))
+    fig.tight_layout(pad=3.5)
     
-    # 1. Цифровой осциллограф (800 точек — ИДЕАЛЬНАЯ плавность без изломов!)
-    t = np.linspace(0, 0.002, 800) 
+    # 1. Цифровой осциллограф (250 точек — оптимально для баланса скорости и гладкости)
+    t = np.linspace(0, 0.002, 250) 
     v_signal = amp * np.sin(2 * np.pi * current_freq * t)
-    
-    # Отрисовка сплошной непрозрачной линией (alpha=1.0)
-    ax_scope.plot(t*1000, v_signal, color='#39ff14', linewidth=2.5, alpha=1.0)
+    ax_scope.plot(t*1000, v_signal, color='lime', linewidth=2.5)
     ax_scope.grid(True, color='#333333', linestyle='--')
-    ax_scope.set_title(f"DIGITAL OSCILLOSCOPE (Current Freq: {current_freq} Hz)", fontsize=11, fontweight='bold', color='#00f0ff')
+    ax_scope.set_title(f"DIGITAL OSCILLOSCOPE (Current Freq: {current_freq} Hz)", fontsize=10, fontweight='bold', color='#00f0ff')
     ax_scope.set_xlabel("Time (ms)", fontsize=9)
     ax_scope.set_ylabel("Amplitude (V)", fontsize=9)
     ax_scope.set_ylim(-1.1, 1.1)
     
-    # 2. Профиль стоячей волны (200 точек)
-    x = np.linspace(0, rod_length, 200)
+    # 2. Профиль стоячей волны
+    x = np.linspace(0, rod_length, 100)
     wave_profile = amp * np.cos(np.pi * x / rod_length)
-    
     ax_rod.axhline(0, color='white', lw=2, alpha=0.3)
-    ax_rod.plot(x, wave_profile, color=physics_data["color"], linewidth=3, alpha=1.0, label="Displacement Envelope")
-    ax_rod.plot(x, -wave_profile, color=physics_data["color"], linewidth=1, linestyle='--', alpha=0.7)
+    ax_rod.plot(x, wave_profile, color=physics_data["color"], linewidth=3, label="Displacement Envelope")
+    ax_rod.plot(x, -wave_profile, color=physics_data["color"], linewidth=1, linestyle='--')
     ax_rod.plot(rod_length/2, 0, 'ro', markersize=9, label="Clamped Center (Node)")
-    ax_rod.set_title(f"Standing Wave Profile: {selected_material} Rod", fontsize=11, fontweight='bold', color='#00f0ff')
+    ax_rod.set_title(f"Standing Wave Profile: {selected_material} Rod", fontsize=10, fontweight='bold', color='#00f0ff')
     ax_rod.set_xlabel("Position along the rod (m)", fontsize=9)
     ax_rod.set_ylabel("Relative Displacement", fontsize=9)
     ax_rod.set_ylim(-1.2, 1.2)
     ax_rod.legend(loc="upper right", fontsize=8)
     ax_rod.grid(True, linestyle=':', alpha=0.3)
     
-    # Выводим графики в правую колонку
+    # Отрисовка графиков в правую колонку
     with col2:
         st.pyplot(fig)
 
-# Запуск интерактивной части
-run_clean_matplotlib_experiment(material, mat_data)
+# Запуск
+run_experiment_block(material, mat_data)
 

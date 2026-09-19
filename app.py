@@ -19,12 +19,8 @@ MATERIALS = {
 st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 
 # Custom Dark Theme Styles
-st.markdown("""
-    <style>
-    .stApp { background-color: #0e1117; color: #ffffff; }
-    div[data-testid="stMarkdownContainer"] h1 { color: #00f0ff !important; }
-    </style>
-""", unsafe_allowed_html=True)
+st.markdown("<style>.stApp { background-color: #0e1117; color: #ffffff; } div[data-testid='stMarkdownContainer'] h1 { color: #00f0ff !important; }</style>", unsafe_allowed_html=True)
+
 
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")

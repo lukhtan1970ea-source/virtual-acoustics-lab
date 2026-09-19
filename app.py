@@ -21,7 +21,7 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-col1, col2 = st.columns([1, 2])
+col1, col2 = st.columns([1, 2]) # Левая колонка чуть уже, правая с графиками — шире
 
 with col1:
     st.header("⚙️ Controls")
@@ -40,8 +40,11 @@ with col1:
     st.write("---")
     st.write("**Drag for Real-Time Tuning:**")
 
+    # Сессионные переменные для отслеживания частоты
     if "live_freq" not in st.session_state:
         st.session_state.live_freq = 1500
+    if "prev_freq" not in st.session_state:
+        st.session_state.prev_freq = 1500
 
     html_slider = f"""
     <div style="font-family: Arial, sans-serif; color: white; background: #1e222b; padding: 15px; border-radius: 8px;">
@@ -71,9 +74,14 @@ with col1:
     if slider_return is not None and str(slider_return).isdigit():
         st.session_state.live_freq = int(slider_return)
 
+# Если частота сдвинулась, принудительно перезапускаем контекст расчетов
+if st.session_state.live_freq != st.session_state.prev_freq:
+    st.session_state.prev_freq = st.session_state.live_freq
+    st.rerun()
+
 current_freq = st.session_state.live_freq
 
-# Physics Calculations
+# --- МАТЕМАТИКА И ФИЗИКА (Выполняется СТРОГО при каждом изменении) ---
 E = mat_data["E"]
 rho = mat_data["rho"]
 rod_length = 0.500
@@ -81,22 +89,23 @@ rod_length = 0.500
 v_sound = np.sqrt(E / rho)
 f0 = v_sound / (2 * rod_length)
 
-# Q-factor set to 80 for smoother, visible resonance approach
-Q = 80 
+# Добротность Q=60 (сделана чуть шире, чтобы студенты легче замечали подъем волны)
+Q = 60 
 amp = 1.0 / np.sqrt(1.0 + Q**2 * (current_freq/f0 - f0/current_freq)**2)
 
-# гарантируем минимальную видимость синусоиды (шум прибора = 0.02 В)
-if amp < 0.02:
-    amp = 0.02
+# Базовый шум прибора, чтобы линия никогда не была идеально мертвой
+if amp < 0.015:
+    amp = 0.015
 
-# --- 1. DIGITAL OSCILLOSCOPE (Plotly) ---
+# --- ОТРИСОВКА ГРАФИКОВ ---
+# 1. Осциллограф
 t = np.linspace(0, 0.002, 200) 
 v_signal = amp * np.sin(2 * np.pi * current_freq * t)
 
 fig_scope = go.Figure()
 fig_scope.add_trace(go.Scatter(x=t*1000, y=v_signal, mode='lines', line=dict(color='#39ff14', width=3)))
 fig_scope.update_layout(
-    title=dict(text="DIGITAL OSCILLOSCOPE (Receiver Output)", font=dict(color='#00f0ff', size=14, family="Arial")),
+    title=dict(text=f"DIGITAL OSCILLOSCOPE (Current Freq: {current_freq} Hz)", font=dict(color='#00f0ff', size=14, family="Arial")),
     xaxis=dict(title="Time (ms)", range=[0, 2.0], gridcolor='#222222'),
     yaxis=dict(title="Amplitude (V)", range=[-1.1, 1.1], gridcolor='#222222'),
     template="plotly_dark",
@@ -105,7 +114,7 @@ fig_scope.update_layout(
     showlegend=False
 )
 
-# --- 2. STANDING WAVE PROFILE (Plotly) ---
+# 2. Стоячая волна в стрижне
 x = np.linspace(0, rod_length, 100)
 wave_profile = amp * np.cos(np.pi * x / rod_length)
 
@@ -126,8 +135,9 @@ fig_rod.update_layout(
 )
 
 with col2:
-    st.plotly_chart(fig_scope, use_container_width=True, key="scope_chart")
-    st.plotly_chart(fig_rod, use_container_width=True, key="rod_chart")
+    st.plotly_chart(fig_scope, use_container_width=True, key=f"scope_{current_freq}")
+    st.plotly_chart(fig_rod, use_container_width=True, key=f"rod_{current_freq}")
+
 
 
 

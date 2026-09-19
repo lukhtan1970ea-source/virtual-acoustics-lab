@@ -1,18 +1,19 @@
 ﻿import streamlit as st
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
+import altair as alt
 
 # --- PHYSICAL CONSTANTS (9 Materials) ---
 MATERIALS = {
-    "Steel": {"E": 2.0e11, "rho": 7800, "color": "cyan"},
-    "Aluminum": {"E": 0.7e11, "rho": 2700, "color": "lightgreen"},
-    "Copper": {"E": 1.1e11, "rho": 8900, "color": "orange"},
-    "Iron": {"E": 2.1e11, "rho": 7870, "color": "darkgray"},
-    "Lead": {"E": 0.16e11, "rho": 11340, "color": "purple"},
-    "Tungsten": {"E": 4.1e11, "rho": 19250, "color": "gold"},
-    "Titanium": {"E": 1.15e11, "rho": 4540, "color": "magenta"},
-    "Gold": {"E": 0.78e11, "rho": 19300, "color": "yellow"},
-    "Silver": {"E": 0.83e11, "rho": 10500, "color": "white"}
+    "Steel": {"E": 2.0e11, "rho": 7800, "color": "#00f0ff"},
+    "Aluminum": {"E": 0.7e11, "rho": 2700, "color": "#39ff14"},
+    "Copper": {"E": 1.1e11, "rho": 8900, "color": "#ffaa00"},
+    "Iron": {"E": 2.1e11, "rho": 7870, "color": "#aaaaaa"},
+    "Lead": {"E": 0.16e11, "rho": 11340, "color": "#cc00ff"},
+    "Tungsten": {"E": 4.1e11, "rho": 19250, "color": "#ffcc00"},
+    "Titanium": {"E": 1.15e11, "rho": 4540, "color": "#ff00ff"},
+    "Gold": {"E": 0.78e11, "rho": 19300, "color": "#ffee00"},
+    "Silver": {"E": 0.83e11, "rho": 10500, "color": "#ffffff"}
 }
 
 st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
@@ -20,8 +21,7 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-# Основная разметка экрана (2 колонки)
-col1, col2 = st.columns([1, 2])
+col1, col2 = st.columns([1, 2]) # Левая колонка чуть уже, правая шире
 
 with col1:
     st.header("⚙️ Controls")
@@ -33,21 +33,19 @@ with col1:
     st.markdown("""
     **STUDENT GUIDE:**
     1. Click on the slider handle.
-    2. Use **Left/Right Keyboard Arrows** for super-precise 1 Hz tuning.
-    3. Find the peak frequency where Oscilloscope Amplitude reaches **1.0 V**.
+    2. Use **Left/Right Keyboard Arrows** for precise 1 Hz tuning.
+    3. Find the peak frequency where Oscilloscope Amplitude reaches max values.
     """)
 
-# Изолированный фрагмент: при движении слайдера Streamlit обновляет ТОЛЬКО этот блок
+# Изолированный быстрый фрагмент для мгновенного отклика слайдера
 @st.fragment
-
-def run_experiment_block(selected_material, physics_data):
-    # Плавный слайдер с шагом 1 Гц
+def run_fast_plots(selected_material, physics_data):
     current_freq = st.slider(
         "Signal Generator Frequency (Hz):", 
         min_value=1000, max_value=6000, value=1500, step=1
     )
     
-    # Физические расчеты амплитуды резонанса
+    # Физические расчеты
     E = physics_data["E"]
     rho = physics_data["rho"]
     rod_length = 0.500
@@ -55,44 +53,53 @@ def run_experiment_block(selected_material, physics_data):
     v_sound = np.sqrt(E / rho)
     f0 = v_sound / (2 * rod_length)
     
-    Q = 45 # Оптимальная ширина пика для ручного поиска
+    Q = 45 
     amp = 1.0 / np.sqrt(1.0 + Q**2 * (current_freq/f0 - f0/current_freq)**2)
-    
     if amp < 0.02:
         amp = 0.02
 
-    # Создание графиков через классический Matplotlib (Dark стиль)
-    plt.style.use('dark_background')
-    fig, (ax_scope, ax_rod) = plt.subplots(2, 1, figsize=(7, 6))
-    fig.tight_layout(pad=3.5)
-    
-    # 1. Цифровой осциллограф
-    t = np.linspace(0, 0.002, 250) 
+    # --- 1. ГРАФИК ОСЦИЛЛОГРАФА (Altair - рендеринг в браузере) ---
+    t = np.linspace(0, 0.002, 150) 
     v_signal = amp * np.sin(2 * np.pi * current_freq * t)
-    ax_scope.plot(t*1000, v_signal, color='lime', linewidth=2.5)
-    ax_scope.grid(True, color='#333333', linestyle='--')
-    ax_scope.set_title(f"DIGITAL OSCILLOSCOPE (Current Freq: {current_freq} Hz)", fontsize=10, fontweight='bold', color='#00f0ff')
-    ax_scope.set_xlabel("Time (ms)", fontsize=9)
-    ax_scope.set_ylabel("Amplitude (V)", fontsize=9)
-    ax_scope.set_ylim(-1.1, 1.1)
+    df_scope = pd.DataFrame({"Time (ms)": t * 1000, "Amplitude (V)": v_signal})
     
-    # 2. Профиль стоячої хвилі
-    x = np.linspace(0, rod_length, 100)
-    wave_profile = amp * np.cos(np.pi * x / rod_length)
-    ax_rod.axhline(0, color='white', lw=2, alpha=0.3)
-    ax_rod.plot(x, wave_profile, color=physics_data["color"], linewidth=3, label="Displacement Envelope")
-    ax_rod.plot(x, -wave_profile, color=physics_data["color"], linewidth=1, linestyle='--')
-    ax_rod.plot(rod_length/2, 0, 'ro', markersize=9, label="Clamped Center (Node)")
-    ax_rod.set_title(f"Standing Wave Profile: {selected_material} Rod", fontsize=10, fontweight='bold', color='#00f0ff')
-    ax_rod.set_xlabel("Position along the rod (m)", fontsize=9)
-    ax_rod.set_ylabel("Relative Displacement", fontsize=9)
-    ax_rod.set_ylim(-1.2, 1.2)
-    ax_rod.legend(loc="upper right", fontsize=8)
-    ax_rod.grid(True, linestyle=':', alpha=0.3)
-    
-    # Отрисовка графиков в правую колонку
-    with col2:
-        st.pyplot(fig)
+    chart_scope = alt.Chart(df_scope).mark_line(color='#39ff14', strokeWidth=2.5).encode(
+        x=alt.X('Time (ms):Q', scale=alt.Scale(domain=[0, 2.0])),
+        y=alt.Y('Amplitude (V):Q', scale=alt.Scale(domain=[-1.1, 1.1]))
+    ).properties(
+        title=f"DIGITAL OSCILLOSCOPE (Current Freq: {current_freq} Hz)",
+        height=280
+    ).configure_view(strokeWidth=0).configure_axis(gridColor='#333333')
 
-# Запуск интерактивной части
-run_experiment_block(material, mat_data)
+    # --- 2. ГРАФИК СТРОЯЧЕЙ ВОЛНЫ (Altair) ---
+    x = np.linspace(0, rod_length, 80)
+    wave_profile = amp * np.cos(np.pi * x / rod_length)
+    df_rod = pd.DataFrame({"Position (m)": x, "Displacement": wave_profile, "Displacement_Neg": -wave_profile})
+    
+    # Основная линия волны
+    line1 = alt.Chart(df_rod).mark_line(color=physics_data["color"], strokeWidth=3).encode(
+        x=alt.X('Position (m):Q', scale=alt.Scale(domain=[0, rod_length])),
+        y=alt.Y('Displacement:Q', scale=alt.Scale(domain=[-1.2, 1.2]), title="Relative Displacement")
+    )
+    # Зеркальная пунктирная линия огибающей
+    line2 = alt.Chart(df_rod).mark_line(color=physics_data["color"], strokeWidth=1, strokeDash=[4, 4]).encode(
+        x='Position (m):Q',
+        y='Displacement_Neg:Q'
+    )
+    # Точка зажима (Node) посередине
+    node_df = pd.DataFrame({"x": [rod_length / 2], "y": [0]})
+    node_point = alt.Chart(node_df).mark_circle(color='red', size=120).encode(x='x:Q', y='y:Q')
+    
+    # Сборка графика воедино
+    chart_rod = alt.layer(line1, line2, node_point).properties(
+        title=f"Standing Wave Profile: {selected_material} Rod",
+        height=280
+    ).configure_view(strokeWidth=0).configure_axis(gridColor='#333333')
+
+    # Вывод графиков в правую колонку
+    with col2:
+        st.altair_chart(chart_scope, use_container_width=True)
+        st.altair_chart(chart_rod, use_container_width=True)
+
+run_fast_plots(material, mat_data)
+

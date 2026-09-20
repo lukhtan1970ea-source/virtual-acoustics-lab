@@ -20,7 +20,7 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-col1, col2 = st.columns([1, 1.8]) # Левая колонка под приборы, правая шире под графики
+col1, col2 = st.columns([1, 1.8])
 
 with col1:
     st.header("⚙️ Controls")
@@ -56,7 +56,6 @@ js_engine_code = f"""
 <div style="position: relative; height:240px; width:100%;"><canvas id="scopeCanvas"></canvas></div>
 <div style="position: relative; height:240px; width:100%; margin-top:25px;"><canvas id="rodCanvas"></canvas></div>
 
-<!-- Подключаем независимый быстрый график из глобального CDN -->
 <script src="https://jsdelivr.net"></script>
 
 <script>
@@ -65,7 +64,6 @@ js_engine_code = f"""
     const rodLength = 0.500;
     const waveColor = "{line_color}";
     
-    // Генерируем 600 точек для абсолютной гладкости синусоиды без изломов
     const t_points = [];
     for(let i=0; i<=600; i++) t_points.push((0.002 / 600) * i);
     
@@ -90,16 +88,14 @@ js_engine_code = f"""
         }}
     }});
 
-    // Конфигурация Профиля Стрижня
+    // Конфигурация Профиля Стрижня (убрали borderDash, чтобы ничего не ломалось)
     const ctxRod = document.getElementById('rodCanvas').getContext('2d');
     const rodChart = new Chart(ctxRod, {{
         type: 'line',
         data: {{
             labels: x_points.map(x => x.toFixed(3)),
             datasets: [
-                {{ data: new Array(151).fill(0), borderColor: waveColor, borderWidth: 3, pointRadius: 0, fill: false }},
-                {{ data: new Array(151).fill(0), borderColor: waveColor, borderWidth: 1, borderDash: [5, 5], pointRadius: 0, fill: false }},
-                {{ data: [], backgroundColor: 'red', pointRadius: 7, showLine: false }}
+                {{ label: 'Envelope', data: new Array(151).fill(0), borderColor: waveColor, borderWidth: 3, pointRadius: 0, fill: false }}
             ]
         }},
         options: {{
@@ -112,35 +108,26 @@ js_engine_code = f"""
         }}
     }});
 
-    // Функция мгновенного пересчета графиков прямо в браузере (60 FPS)
     function updateVisuals(freq) {{
         let amp = 1.0 / Math.sqrt(1.0 + Math.pow(Q, 2) * Math.pow((freq/f0 - f0/freq), 2));
         if (amp < 0.02) amp = 0.02;
         
         const y_scope = t_points.map(t => amp * Math.sin(2 * Math.PI * freq * t));
         const y_rod_pos = x_points.map(x => amp * Math.cos(Math.PI * x / rodLength));
-        const y_rod_neg = y_rod_pos.map(y => -y);
         
-        // Обновляем массивы данных
         scopeChart.data.datasets[0].data = y_scope;
         scopeChart.options.plugins.title.text = 'DIGITAL OSCILLOSCOPE (Current Freq: ' + freq + ' Hz)';
-        scopeChart.update('none'); // Мгновенный рендеринг без анимационных задержек
+        scopeChart.update('none'); 
         
         rodChart.data.datasets[0].data = y_rod_pos;
-        rodChart.data.datasets[1].data = y_rod_neg;
-        
-        // Стабильное положение центрального узла (Node)
-        rodChart.data.datasets[2].data = [{{ x: "0.250", y: 0 }}];
         rodChart.update('none');
     }}
 
     const slider = document.getElementById('realtime_slide');
     const valDisplay = document.getElementById('freq_val');
     
-    // Стартовый запуск
     updateVisuals(1500);
 
-    // Ловим микродвижения мыши (input событие)
     slider.addEventListener('input', (e) => {{
         const val = parseInt(e.target.value);
         valDisplay.innerText = val;
@@ -150,5 +137,4 @@ js_engine_code = f"""
 """
 
 with col2:
-    # Запускаем автономный HTML-движок
     components.html(js_engine_code, height=640)

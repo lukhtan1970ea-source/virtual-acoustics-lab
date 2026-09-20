@@ -1,7 +1,7 @@
 ﻿import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
-
+go.switch_backend('Agg')
 # --- PHYSICAL CONSTANTS (9 Materials) ---
 MATERIALS = {
     "Steel": {"E": 2.0e11, "rho": 7800, "color": "#00f0ff"},

@@ -1,6 +1,6 @@
 ﻿import streamlit as st
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
 # --- PHYSICAL CONSTANTS (9 Materials) ---
 MATERIALS = {
@@ -20,97 +20,83 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-# Выбор материала (вызывает легкую перезагрузку только при смене металла)
-material = st.selectbox("Select Rod Material:", list(MATERIALS.keys()))
-mat_data = MATERIALS[material]
+# Основная разметка экрана (2 колонки)
+col1, col2 = st.columns([1, 1.5]) # Левая чуть уже, правая шире
 
-st.info("📏 **Rod Specifications:** Length (L) = 0.500 m | Diameter (d) = 15.0 mm. Use the sliders INSIDE the graphs below to tune the frequency in real-time!")
+with col1:
+    st.header("⚙️ Controls")
+    material = st.selectbox("Select Rod Material:", list(MATERIALS.keys()))
+    mat_data = MATERIALS[material]
+    
+    st.info("📏 **Rod Specifications:**\n* Length (L): 0.500 m\n* Diameter (d): 15.0 mm")
+    
+    # Родной высокоскоростной слайдер Streamlit
+    current_freq = st.slider(
+        "Signal Generator Frequency (Hz):", 
+        min_value=1000, max_value=6000, value=1500, step=1
+    )
+    
+    st.markdown("""
+    **STUDENT GUIDE:**
+    1. Click on the slider handle inside the workspace.
+    2. Use **Left/Right Keyboard Arrows** for ultra-precise 1 Hz tuning.
+    3. Find the peak frequency where Oscilloscope Amplitude reaches **1.0 V**.
+    """)
 
-# Расчет физики резонанса
+# --- ФИЗИЧЕСКИЕ РАСЧЕТЫ (Выполняются мгновенно на сервере) ---
 E = mat_data["E"]
 rho = mat_data["rho"]
 rod_length = 0.500
+
 v_sound = np.sqrt(E / rho)
 f0 = v_sound / (2 * rod_length)
-Q = 50 
 
-# Диапазон частот для анимации (с шагом 20 Гц, чтобы браузер не лагал)
-frequencies = np.arange(1000, 6001, 20)
+Q = 50 # Оптимальная ширина резонансного пика
+amp = 1.0 / np.sqrt(1.0 + Q**2 * (current_freq/f0 - f0/current_freq)**2)
 
-# Генерируем данные для интерактивного графика Plotly
-fig = go.Figure()
+if amp < 0.02:
+    amp = 0.02
 
-# Векторы времени и координат
-t = np.linspace(0, 0.002, 150)
-x = np.linspace(0, rod_length, 80)
+# --- ГЕНЕРАЦИЯ ВЕКТОРОВ ДАННЫХ ---
+# 1. Цифровой осциллограф (400 точек для абсолютной округлости и плавности линии)
+t = np.linspace(0, 0.002, 400) 
+v_signal = amp * np.sin(2 * np.pi * current_freq * t)
 
-# 1. Создаем базовые («стартовые») кривые для начальной частоты 1500 Гц
-amp_start = 1.0 / np.sqrt(1.0 + Q**2 * (1500/f0 - f0/1500)**2)
-if amp_start < 0.02: amp_start = 0.02
+fig_scope = go.Figure()
+fig_scope.add_trace(go.Scatter(x=t*1000, y=v_signal, mode='lines', line=dict(color='#39ff14', width=3)))
 
-# Кривая осциллографа (индекс трассы 0)
-fig.add_trace(go.Scatter(x=t*1000, y=amp_start*np.sin(2*np.pi*1500*t), mode='lines', line=dict(color='#39ff14', width=3), name="Oscilloscope"))
-# Кривая стоячей волны + (индекс трассы 1)
-fig.add_trace(go.Scatter(x=x, y=amp_start*np.cos(np.pi*x/rod_length), mode='lines', line=dict(color=mat_data["color"], width=3), xaxis="x2", yaxis="y2", name="Wave Envelope"))
-# Кривая стоячей волны - (индекс трассы 2)
-fig.add_trace(go.Scatter(x=x, y=-amp_start*np.cos(np.pi*x/rod_length), mode='lines', line=dict(color=mat_data["color"], width=1, dash='dash'), xaxis="x2", yaxis="y2", showlegend=False))
-# Узел (Node) по центру (индекс трассы 3)
-fig.add_trace(go.Scatter(x=[rod_length/2], y=[0], mode='markers', marker=dict(color='red', size=10), xaxis="x2", yaxis="y2", name="Center Clamp"))
+grid_style = dict(gridcolor='rgba(128, 128, 128, 0.15)', zerolinecolor='rgba(128, 128, 128, 0.3)')
 
-# 2. Создаем кадры анимации (Frames) для каждого положения слайдера
-frames = []
-for f in frequencies:
-    amp = 1.0 / np.sqrt(1.0 + Q**2 * (f/f0 - f0/f)**2)
-    if amp < 0.02: amp = 0.02
-    
-    y_v = amp * np.sin(2 * np.pi * f * t)
-    y_w = amp * np.cos(np.pi * x / rod_length)
-    
-    frames.append(go.Frame(
-        data=[
-            go.Scatter(y=y_v),
-            go.Scatter(y=y_w),
-            go.Scatter(y=-y_w)
-        ],
-        name=str(f)
-    ))
-
-fig.frames = frames
-
-# 3. Настраиваем интерактивный слайдер Plotly, который переключает кадры внутри браузера
-sliders_steps = []
-for f in frequencies:
-    sliders_steps.append({
-        "args": [[str(f)], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}],
-        "label": str(f),
-        "method": "animate"
-    })
-
-# Оформление двойного темного графика на одном холсте (Subplots через слои)
-fig.update_layout(
+fig_scope.update_layout(
+    title=dict(text=f"DIGITAL OSCILLOSCOPE (Current Freq: {current_freq} Hz)", font=dict(color='#00f0ff', size=14)),
+    xaxis=dict(title="Time (ms)", range=[0, 2.0], **grid_style),
+    yaxis=dict(title="Amplitude (V)", range=[-1.1, 1.1], **grid_style),
     template="plotly_dark",
-    height=650,
-    margin=dict(l=50, r=30, t=50, b=40),
-    # Сетка первого графика (Осциллограф)
-    xaxis=dict(title="Time (ms)", domain=[0, 1.0], range=[0, 2.0], gridcolor='#222222'),
-    yaxis=dict(title="Amplitude (V)", range=[-1.1, 1.1], gridcolor='#222222'),
-    # Сетка второго графика (Стрижень) - смещена вниз
-    xaxis2=dict(title="Position along the rod (m)", domain=[0, 1.0], range=[0, rod_length], gridcolor='#222222', anchor="y2"),
-    yaxis2=dict(title="Relative Displacement", range=[-1.2, 1.2], gridcolor='#222222', anchor="x2"),
-    
-    # Распределение осей по вертикали
-    yaxis2_position=0.45,
-    grid=dict(rows=2, columns=1, pattern='independent'),
-    
-    # Внедрение слайдера
-    sliders=[{
-        "active": int(np.where(frequencies == 1500)[0][0]),
-        "currentvalue": {"prefix": "Generator Frequency: ", "suffix": " Hz", "font": {"color": "#00f0ff", "size": 16}},
-        "pad": {"t": 50},
-        "steps": sliders_steps
-    }],
+    margin=dict(l=40, r=20, t=40, b=40),
+    height=290,
     showlegend=False
 )
 
-# Выводим готовый интерактивный холст
-st.plotly_chart(fig, use_container_width=True)
+# 2. Профиль стоячей волны
+x = np.linspace(0, rod_length, 150)
+wave_profile = amp * np.cos(np.pi * x / rod_length)
+
+fig_rod = go.Figure()
+fig_rod.add_trace(go.Scatter(x=x, y=wave_profile, mode='lines', line=dict(color=mat_data["color"], width=3), name="Displacement"))
+fig_rod.add_trace(go.Scatter(x=x, y=-wave_profile, mode='lines', line=dict(color=mat_data["color"], width=1, dash='dash'), showlegend=False))
+fig_rod.add_trace(go.Scatter(x=[rod_length/2], y=[0], mode='markers', marker=dict(color='red', size=11), name="Clamped Center (Node)"))
+
+fig_rod.update_layout(
+    title=dict(text=f"Standing Wave Profile: {material} Rod", font=dict(color='#00f0ff', size=14)),
+    xaxis=dict(title="Position along the rod (m)", range=[0, rod_length], **grid_style),
+    yaxis=dict(title="Relative Displacement", range=[-1.2, 1.2], **grid_style),
+    template="plotly_dark",
+    margin=dict(l=40, r=20, t=40, b=40),
+    height=290,
+    showlegend=False
+)
+
+# Выводим графики в правую колонку
+with col2:
+    st.plotly_chart(fig_scope, use_container_width=True, key=f"scope_{current_freq}")
+    st.plotly_chart(fig_rod, use_container_width=True, key=f"rod_{current_freq}")

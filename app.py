@@ -1,6 +1,6 @@
 ﻿import streamlit as st
 import numpy as np
-import plotly.graph_objects as go
+import streamlit.components.v1 as components
 
 # --- PHYSICAL CONSTANTS (9 Materials) ---
 MATERIALS = {
@@ -20,8 +20,7 @@ st.set_page_config(page_title="Virtual Lab: Young's Modulus", layout="wide")
 st.title("🔬 Virtual Acoustics Lab")
 st.subheader("Dynamic Determination of Young's Modulus via Standing Waves")
 
-# Основная разметка экрана (2 колонки)
-col1, col2 = st.columns([1, 1.5]) # Левая чуть уже, правая шире
+col1, col2 = st.columns([1, 1.8]) # Левая колонка под приборы, правая шире под графики
 
 with col1:
     st.header("⚙️ Controls")
@@ -30,73 +29,126 @@ with col1:
     
     st.info("📏 **Rod Specifications:**\n* Length (L): 0.500 m\n* Diameter (d): 15.0 mm")
     
-    # Родной высокоскоростной слайдер Streamlit
-    current_freq = st.slider(
-        "Signal Generator Frequency (Hz):", 
-        min_value=1000, max_value=6000, value=1500, step=1
-    )
-    
     st.markdown("""
     **STUDENT GUIDE:**
-    1. Click on the slider handle inside the workspace.
-    2. Use **Left/Right Keyboard Arrows** for ultra-precise 1 Hz tuning.
+    1. Drag the slider inside the workspace on the right.
+    2. The graphs will update **instantly in real-time** as you move the mouse.
     3. Find the peak frequency where Oscilloscope Amplitude reaches **1.0 V**.
     """)
 
-# --- ФИЗИЧЕСКИЕ РАСЧЕТЫ (Выполняются мгновенно на сервере) ---
+# Расчет физики резонанса для передачи в браузер
 E = mat_data["E"]
 rho = mat_data["rho"]
-rod_length = 0.500
-
 v_sound = np.sqrt(E / rho)
-f0 = v_sound / (2 * rod_length)
+f0 = v_sound / (2 * 0.500)
+line_color = mat_data["color"]
 
-Q = 50 # Оптимальная ширина резонансного пика
-amp = 1.0 / np.sqrt(1.0 + Q**2 * (current_freq/f0 - f0/current_freq)**2)
+# Высокоскоростной автономный интерактивный движок на чистом JavaScript + Chart.js
+js_engine_code = f"""
+<div id="controls" style="font-family: Arial, sans-serif; color: white; background: #1e222b; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+    <label style="display:block; margin-bottom:8px; font-weight:bold; font-size:16px;">
+        Signal Generator Frequency: <span id="freq_val" style="color:#00f0ff; font-size:18px;">1500</span> Hz
+    </label>
+    <input type="range" id="realtime_slide" min="1000" max="6000" value="1500" step="1" 
+        style="width: 100%; accent-color: #00f0ff; cursor: pointer;">
+</div>
 
-if amp < 0.02:
-    amp = 0.02
+<div style="position: relative; height:240px; width:100%;"><canvas id="scopeCanvas"></canvas></div>
+<div style="position: relative; height:240px; width:100%; margin-top:25px;"><canvas id="rodCanvas"></canvas></div>
 
-# --- ГЕНЕРАЦИЯ ВЕКТОРОВ ДАННЫХ ---
-# 1. Цифровой осциллограф (400 точек для абсолютной округлости и плавности линии)
-t = np.linspace(0, 0.002, 400) 
-v_signal = amp * np.sin(2 * np.pi * current_freq * t)
+<!-- Подключаем независимый быстрый график из глобального CDN -->
+<script src="https://jsdelivr.net"></script>
 
-fig_scope = go.Figure()
-fig_scope.add_trace(go.Scatter(x=t*1000, y=v_signal, mode='lines', line=dict(color='#39ff14', width=3)))
+<script>
+    const f0 = {f0};
+    const Q = 50; 
+    const rodLength = 0.500;
+    const waveColor = "{line_color}";
+    
+    // Генерируем 600 точек для абсолютной гладкости синусоиды без изломов
+    const t_points = [];
+    for(let i=0; i<=600; i++) t_points.push((0.002 / 600) * i);
+    
+    const x_points = [];
+    for(let i=0; i<=150; i++) x_points.push((rodLength / 150) * i);
 
-grid_style = dict(gridcolor='rgba(128, 128, 128, 0.15)', zerolinecolor='rgba(128, 128, 128, 0.3)')
+    // Конфигурация Цифрового Осциллографа
+    const ctxScope = document.getElementById('scopeCanvas').getContext('2d');
+    const scopeChart = new Chart(ctxScope, {{
+        type: 'line',
+        data: {{
+            labels: t_points.map(t => (t * 1000).toFixed(2)),
+            datasets: [{{ data: new Array(601).fill(0), borderColor: '#39ff14', borderWidth: 2.5, pointRadius: 0, fill: false }}]
+        }},
+        options: {{
+            responsive: true, maintainAspectRatio: false,
+            plugins: {{ title: {{ display: true, text: 'DIGITAL OSCILLOSCOPE (Current Freq: 1500 Hz)', color: '#00f0ff', font: {{ size: 14, weight: 'bold' }} }}, legend: {{ display: false }} }},
+            scales: {{
+                x: {{ title: {{ display: true, text: 'Time (ms)', color: '#888' }}, ticks: {{ color: '#666', maxTicksLimit: 8 }}, grid: {{ color: '#222' }} }},
+                y: {{ min: -1.1, max: 1.1, title: {{ display: true, text: 'Amplitude (V)', color: '#888' }}, ticks: {{ color: '#666' }}, grid: {{ color: '#222' }} }}
+            }}
+        }}
+    }});
 
-fig_scope.update_layout(
-    title=dict(text=f"DIGITAL OSCILLOSCOPE (Current Freq: {current_freq} Hz)", font=dict(color='#00f0ff', size=14)),
-    xaxis=dict(title="Time (ms)", range=[0, 2.0], **grid_style),
-    yaxis=dict(title="Amplitude (V)", range=[-1.1, 1.1], **grid_style),
-    template="plotly_dark",
-    margin=dict(l=40, r=20, t=40, b=40),
-    height=290,
-    showlegend=False
-)
+    // Конфигурация Профиля Стрижня
+    const ctxRod = document.getElementById('rodCanvas').getContext('2d');
+    const rodChart = new Chart(ctxRod, {{
+        type: 'line',
+        data: {{
+            labels: x_points.map(x => x.toFixed(3)),
+            datasets: [
+                {{ data: new Array(151).fill(0), borderColor: waveColor, borderWidth: 3, pointRadius: 0, fill: false }},
+                {{ data: new Array(151).fill(0), borderColor: waveColor, borderWidth: 1, borderDash: [5, 5], pointRadius: 0, fill: false }},
+                {{ data: [], backgroundColor: 'red', pointRadius: 7, showLine: false }}
+            ]
+        }},
+        options: {{
+            responsive: true, maintainAspectRatio: false,
+            plugins: {{ title: {{ display: true, text: 'Standing Wave Profile inside the Rod', color: '#00f0ff', font: {{ size: 14, weight: 'bold' }} }}, legend: {{ display: false }} }},
+            scales: {{
+                x: {{ title: {{ display: true, text: 'Position along the rod (m)', color: '#888' }}, ticks: {{ color: '#666', maxTicksLimit: 6 }}, grid: {{ color: '#222' }} }},
+                y: {{ min: -1.2, max: 1.2, title: {{ display: true, text: 'Relative Displacement', color: '#888' }}, ticks: {{ color: '#666' }}, grid: {{ color: '#222' }} }}
+            }}
+        }}
+    }});
 
-# 2. Профиль стоячей волны
-x = np.linspace(0, rod_length, 150)
-wave_profile = amp * np.cos(np.pi * x / rod_length)
+    // Функция мгновенного пересчета графиков прямо в браузере (60 FPS)
+    function updateVisuals(freq) {{
+        let amp = 1.0 / Math.sqrt(1.0 + Math.pow(Q, 2) * Math.pow((freq/f0 - f0/freq), 2));
+        if (amp < 0.02) amp = 0.02;
+        
+        const y_scope = t_points.map(t => amp * Math.sin(2 * Math.PI * freq * t));
+        const y_rod_pos = x_points.map(x => amp * Math.cos(Math.PI * x / rodLength));
+        const y_rod_neg = y_rod_pos.map(y => -y);
+        
+        // Обновляем массивы данных
+        scopeChart.data.datasets[0].data = y_scope;
+        scopeChart.options.plugins.title.text = 'DIGITAL OSCILLOSCOPE (Current Freq: ' + freq + ' Hz)';
+        scopeChart.update('none'); // Мгновенный рендеринг без анимационных задержек
+        
+        rodChart.data.datasets[0].data = y_rod_pos;
+        rodChart.data.datasets[1].data = y_rod_neg;
+        
+        // Стабильное положение центрального узла (Node)
+        rodChart.data.datasets[2].data = [{{ x: "0.250", y: 0 }}];
+        rodChart.update('none');
+    }}
 
-fig_rod = go.Figure()
-fig_rod.add_trace(go.Scatter(x=x, y=wave_profile, mode='lines', line=dict(color=mat_data["color"], width=3), name="Displacement"))
-fig_rod.add_trace(go.Scatter(x=x, y=-wave_profile, mode='lines', line=dict(color=mat_data["color"], width=1, dash='dash'), showlegend=False))
-fig_rod.add_trace(go.Scatter(x=[rod_length/2], y=[0], mode='markers', marker=dict(color='red', size=11), name="Clamped Center (Node)"))
+    const slider = document.getElementById('realtime_slide');
+    const valDisplay = document.getElementById('freq_val');
+    
+    // Стартовый запуск
+    updateVisuals(1500);
 
-fig_rod.update_layout(
-    title=dict(text=f"Standing Wave Profile: {material} Rod", font=dict(color='#00f0ff', size=14)),
-    xaxis=dict(title="Position along the rod (m)", range=[0, rod_length], **grid_style),
-    yaxis=dict(title="Relative Displacement", range=[-1.2, 1.2], **grid_style),
-    template="plotly_dark",
-    margin=dict(l=40, r=20, t=40, b=40),
-    height=290,
-    showlegend=False
-)
+    // Ловим микродвижения мыши (input событие)
+    slider.addEventListener('input', (e) => {{
+        const val = parseInt(e.target.value);
+        valDisplay.innerText = val;
+        updateVisuals(val);
+    }});
+</script>
+"""
 
-# Выводим графики в правую колонку
 with col2:
-    st.plotly_chart(fig_scope, use_container_width=True, key=f"scope_{current_freq}")
-    st.plotly_chart(fig_rod, use_container_width=True, key=f"rod_{current_freq}")
+    # Запускаем автономный HTML-движок
+    components.html(js_engine_code, height=640)
